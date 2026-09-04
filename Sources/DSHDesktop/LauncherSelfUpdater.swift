@@ -9,7 +9,8 @@ import Foundation
 /// 与主应用自更新的两点差异（install.sh 是安装布局的唯一事实来源）：
 /// 1. 安装位不在 /Applications，而在 ~/Library/Application Support/DSH Launcher.app；
 /// 2. zip 内还平级携带 dsh-mini-dialog 插件载荷（可缺失，缺失不算错），需同步到
-///    ~/.dsh/profiles/node_modules/dsh-mini-dialog 并幂等维护 cordis.patch.yml 装配条目。
+///    ~/.dsh/profiles/web/node_modules/dsh-mini-dialog（内层官方依赖树）并幂等维护
+///    cordis.patch.yml 装配条目。
 ///
 /// 本文件刻意不做版本比较（是否需要更新由调用方用 compareLauncherVersions 判定），
 /// 只负责"确定要装"之后的下载、校验、落位与重启。
@@ -50,9 +51,11 @@ enum LauncherSelfUpdater {
         FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Application Support/DSH Backups")
     }
+    /// 插件部署位 = 内层官方依赖树（profiles/web/node_modules）。外层 profiles/node_modules
+    /// 是 rc.2 时代旧树，插件放外层会让 imports 解析到旧模块（双树冲突教训）。
     private static var pluginDest: URL {
         FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".dsh/profiles/node_modules/dsh-mini-dialog")
+            .appendingPathComponent(".dsh/profiles/web/node_modules/dsh-mini-dialog")
     }
     /// ~/.dsh/profiles/web 不存在 = DSH 后端尚未初始化过，插件同步应静默跳过
     private static var profileWebDir: URL {
@@ -268,7 +271,7 @@ enum LauncherSelfUpdater {
             throw NSError(domain: "launcherupdate", code: 5,
                 userInfo: [NSLocalizedDescriptionKey: "插件同步失败，已恢复原状并中止更新（\(error.localizedDescription)）"])
         }
-        progress("  ✓ 插件已部署 → ~/.dsh/profiles/node_modules/dsh-mini-dialog")
+        progress("  ✓ 插件已部署 → ~/.dsh/profiles/web/node_modules/dsh-mini-dialog")
     }
 
     /// cordis patch 装配条目的幂等写入——路径与三种分支的格式均以 install.sh 的

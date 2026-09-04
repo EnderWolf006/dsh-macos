@@ -2,54 +2,51 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleDevelopmentRegion</key>
-    <string>zh_CN</string>
-    <key>CFBundleExecutable</key>
-    <string>DSHDesktop</string>
-    <key>CFBundleIconFile</key>
-    <string>AppIcon</string>
-    <key>CFBundleIdentifier</key>
-    <string>com.deepseek-ai.dsh-desktop</string>
-    <key>CFBundleInfoDictionaryVersion</key>
-    <string>6.0</string>
-    <key>CFBundleName</key>
-    <string>DSH Desktop</string>
-    <key>CFBundleDisplayName</key>
-    <string>DSH Desktop</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <!-- 方案甲：dshdesktop:// 唤起入口。静态声明零运行成本（无线程/守护/监听），
-         launcher 不在场时该配置即死配置——随安装卸载"热插拔"由使用方天然实现。
-         目前仅声明；未来深链动作（如 dshdesktop://open/session?id=）在此扩展。 -->
-    <key>CFBundleURLTypes</key>
-    <array>
-        <dict>
-            <key>CFBundleURLName</key>
-            <string>com.deepseek-ai.dsh-desktop</string>
-            <key>CFBundleURLSchemes</key>
-            <array>
-                <string>dshdesktop</string>
-            </array>
-        </dict>
-    </array>
-    <key>CFBundleShortVersionString</key>
-    <string>1.0.10</string>
-    <key>CFBundleVersion</key>
-    <string>1</string>
-    <key>LSMinimumSystemVersion</key>
-    <string>13.0</string>
-    <key>LSApplicationCategoryType</key>
-    <string>public.app-category.developer-tools</string>
-    <key>NSHighResolutionCapable</key>
-    <true/>
-    <key>NSPrincipalClass</key>
-    <string>NSApplication</string>
-    <key>NSHumanReadableCopyright</key>
-    <string>© 2026 DSH Desktop 社区项目（非 DeepSeek 官方出品）详情请访问仓库链接：https://github.com/Farverge/DSH-MacOS</string>
-    <key>NSAppTransportSecurity</key>
-    <dict>
-        <key>NSAllowsLocalNetworking</key>
-        <true/>
-    </dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>zh_CN</string>
+	<key>CFBundleDisplayName</key>
+	<string>DSH Desktop</string>
+	<key>CFBundleExecutable</key>
+	<string>DSHDesktop</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.deepseek-ai.dsh-desktop</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>DSH Desktop</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0.11</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.deepseek-ai.dsh-desktop</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>dshdesktop</string>
+			</array>
+		</dict>
+	</array>
+	<key>CFBundleVersion</key>
+	<string>$(GIT_COMMIT)</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.developer-tools</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>13.0</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>© 2026 DSH Desktop 社区项目（非 DeepSeek 官方出品）详情请访问仓库链接：https://github.com/Farverge/DSH-MacOS</string>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
 </dict>
 </plist>
