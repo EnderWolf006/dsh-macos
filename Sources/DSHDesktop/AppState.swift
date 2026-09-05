@@ -49,6 +49,16 @@ final class AppState: ObservableObject {
     /// 非空且未被消费时，WebView 首载改用该 URL 完成一次性授权换 Cookie。
     @Published var authLaunchURL: URL?
 
+    // MARK: - 主题面（主题插件协议 v1；字段名为接口契约，供后续设置页 UI 消费，勿改名）
+    // 由 ThemeCoordinator 维护，AppState 只做发布态承载
+
+    /// GET /themes 的主题清单（含 official）
+    @Published var themes: [ThemeInfo] = []
+    /// 当前外观 id（"official" 默认 | 主题 id）
+    @Published var activeThemeID: String = "official"
+    /// dsh-theme-sdk 是否已装（/themes 路由可达；404 = 未装）
+    @Published var themeSDKAvailable: Bool = false
+
     // MARK: - 窗口增强（持久化）
 
     @Published var immersiveTitlebar: Bool = true

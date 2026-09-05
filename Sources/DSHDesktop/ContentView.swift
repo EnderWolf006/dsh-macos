@@ -43,6 +43,11 @@ struct ContentView: View {
                     spinner: server.status == .starting || server.status == .unknown
                 )
             }
+            // 主题池容器层（主题插件协议 §5）：叠在官方 WebView 之上，主题实例由
+            // ThemeCoordinator 加进/移出该容器；official 态整层隐藏（不挡官方交互），
+            // 官方 WebView 的 SwiftUI 生命周期原样不动（禁止 re-parent）。状态面板
+            // 在屏时该层自动让位（surfaceAvailable=false）。
+            ThemePoolHost(surfaceAvailable: showWeb)
             if let disconnected {
                 DisconnectBanner(message: disconnected)
             }

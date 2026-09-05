@@ -119,7 +119,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // （0.1.1-rc.2）没有 token 行，回调不触发，首载仍走裸 URL。
         ServerManager.shared.onLaunchTokenURL = { url in
             AppState.shared.authLaunchURL = url
+            // 主题宿主（组合接线）：保留上方既有转存行为，追加通知主题协调器。
+            // 协调器据此在官方授权导航完成（新 Cookie 落入池共享存储）后重载
+            // 主题页接管新会话（协议 §12-5）；绝不替换/打断原有认证链。
+            ThemeCoordinator.shared.handleLaunchToken(url)
         }
+
+        // 主题宿主化（主题插件协议 v1 rev1.5 宿主义务）：WebView 池（B1）、
+        // 主题面轮询与重连跟随（B5）、首装激活（B4）、Dock 图标联动（B6）。
+        // 握手看门狗（B2）由 ThemeWebView 承载、ThemeCoordinator 消费回调。
+        // 主题 WebView 渲染进程崩溃经其委托自报协调器回退 official（§6-5）。
+        ThemeCoordinator.shared.launch()
 
         // 沉浸式窗口：等主窗口出现后设置透明标题栏 + 内容延伸（红绿灯悬浮、内容顶到顶）。
         // 受「沉浸式标题栏」开关控制（默认开，关闭后回到系统标准标题栏）。
