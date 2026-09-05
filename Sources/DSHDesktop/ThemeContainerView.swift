@@ -1,8 +1,26 @@
-import SwiftUI
 import AppKit
 
 // MARK: - 池容器：承载 ≤2 个主题 WebView 实例（协议 §5 全池 ≤3：official 由现有
 // HarnessWebView 担任、SwiftUI 持有、永不回收；主题实例至多「活跃 + 预热」两席）
+//
+// 层级注意：容器不经 SwiftUI 挂载。SwiftUI 窗口的 contentView 即 NSHostingView，
+// 其平台子视图（官方 WKWebView 的 PlatformViewHost 等）会随 SwiftUI 重渲染被
+// 重排（真机实测：能排到我们直装进 hosting 的覆盖层之上；AppDelegate 拖拽带被
+// 晚插入的 WKWebView 盖住是同一族怪癖）。根治：ThemeCoordinator 把 NSHostingView
+// 原地包进 WindowShellView（普通 NSView）作为新 contentView，壳内顺序
+// [hosting, 主题容器, 拖拽带] 完全由协调器决定，SwiftUI 只动 hosting 内部，
+// 永远压不到覆盖层头上。
+
+/// 主窗口 contentView 包壳：SwiftUI 的 NSHostingView 住里面；覆盖层
+/// （ThemeContainerView / DragStripView）作为壳的子视图恒在其上。
+final class WindowShellView: NSView {
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("unsupported") }
+}
 
 final class ThemeContainerView: NSView {
     override init(frame frameRect: NSRect) {
@@ -47,23 +65,5 @@ final class ThemeContainerView: NSView {
         }, completionHandler: { [to, from] in
             if let from, from !== to { from.isHidden = true }
         })
-    }
-}
-
-// MARK: - SwiftUI 桥（容器由 ThemeCoordinator 持有，SwiftUI 重建视图身份时迁移池实例，
-// 绝不重建 WebView；official 态整层隐藏，露出下方现有官方 WebView）
-
-struct ThemePoolHost: NSViewRepresentable {
-    /// 官方 Web 面是否在屏（ContentView 的 showWeb）；false（状态面板在屏）时
-    /// 主题容器必须让位，否则会盖住状态面板与「启动服务器」按钮
-    var surfaceAvailable: Bool
-
-    func makeNSView(context: Context) -> ThemeContainerView {
-        ThemeCoordinator.shared.attachContainer()
-    }
-
-    func updateNSView(_ nsView: ThemeContainerView, context: Context) {
-        ThemeCoordinator.shared.adoptContainer(nsView)
-        ThemeCoordinator.shared.setWebSurfaceAvailable(surfaceAvailable)
     }
 }

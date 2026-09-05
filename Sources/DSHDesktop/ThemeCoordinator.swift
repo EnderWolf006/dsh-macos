@@ -47,7 +47,9 @@ final class ThemeCoordinator: NSObject, ObservableObject {
     private var pendingTarget: ThemeAppearance?
     /// official 尚未就绪（首次加载未完成）时想去的主题，就绪后 reconcile
     private var themeWantedBeforeOfficialReady: String?
-    /// 官方 Web 面是否在屏（ContentView showWeb；false=状态面板在屏，主题层让位）
+    /// 官方 Web 面是否在屏（与 ContentView 的 showWeb 同公式：running 或「error 且
+    /// 页面已载」的断连态；false=状态面板在屏，主题层让位）。由协调器从
+    /// server.status + pageLoaded 推导，不经 SwiftUI 桥同步
     private var webSurfaceAvailable = false
 
     // MARK: 主题面轮询（§4）
@@ -57,6 +59,12 @@ final class ThemeCoordinator: NSObject, ObservableObject {
     private var manifests: [String: ThemeManifest] = [:]
     private var cancellables: Set<AnyCancellable> = []
     private var webLoadedObserver: NSObjectProtocol?
+    /// 主窗口获焦（didBecomeKey）→ 容器装机/迁移的观察者
+    private var windowObserver: NSObjectProtocol?
+    /// 一次性层级 dump 已做标记（z-order 排障证据链）
+    private var didDumpHierarchy = false
+    /// 首次切换到主题后的那份 dump 的标记
+    private var didDumpHierarchyAfterSwitch = false
     private var interfaceObserver: NSObjectProtocol?
     /// 新 launch token 到达 → 官方页下次 didFinish（Cookie 已落入共享存储）后重载主题页（§12-5）
     private var pendingThemeResync = false
@@ -82,7 +90,10 @@ final class ThemeCoordinator: NSObject, ObservableObject {
         observeOfficialReadiness()
         observeOfficialPageLoads()
         observeInterfaceChanges()
+        observeWindows()
         startThemePlanePolls()
+        updateWebSurfaceAvailable()
+        ensureContainerInstalled()   // 窗口已存在则立即装；否则等 didBecomeKey
         Log.info("ThemeCoordinator 已接线（主题面轮询启动）")
     }
 
@@ -90,9 +101,11 @@ final class ThemeCoordinator: NSObject, ObservableObject {
     /// + 重载活跃主题页。冷启动首刷与后端重启续刷同走此路。
     private func observeBackendStatus() {
         server.$status.removeDuplicates().sink { [weak self] status in
-            guard status == .running else { return }
             Task { @MainActor [weak self] in
-                await self?.backendRunningPulse()
+                guard let self else { return }
+                self.updateWebSurfaceAvailable()
+                guard status == .running else { return }
+                await self.backendRunningPulse()
             }
         }
         .store(in: &cancellables)
@@ -101,10 +114,11 @@ final class ThemeCoordinator: NSObject, ObservableObject {
     /// official 就绪门：现有 WebView.swift 的加载状态（pageLoaded）翻真 = 官方页
     /// 首载完成（token 已换成 Cookie 落共享存储），此刻才允许主题建页（防 401 闪烁）
     private func observeOfficialReadiness() {
-        app.$pageLoaded.removeDuplicates().sink { [weak self] loaded in
-            guard loaded else { return }
+        app.$pageLoaded.removeDuplicates().sink { [weak self] _ in
             Task { @MainActor [weak self] in
-                self?.reconcileAfterOfficialReady()
+                guard let self else { return }
+                self.updateWebSurfaceAvailable()
+                self.reconcileAfterOfficialReady()
             }
         }
         .store(in: &cancellables)
@@ -124,6 +138,8 @@ final class ThemeCoordinator: NSObject, ObservableObject {
     }
 
     private func officialPageDidFinish() {
+        ensureContainerInstalled()
+        dumpWindowHierarchyOnce()
         guard pendingThemeResync else { return }
         pendingThemeResync = false
         let ids = themeViews.keys.sorted()
@@ -154,30 +170,102 @@ final class ThemeCoordinator: NSObject, ObservableObject {
 
     // MARK: - 容器与池
 
-    /// SwiftUI 首次渲染 ThemePoolHost 时取走容器（容器终身一个，池实例不随 SwiftUI 重建）
-    func attachContainer() -> ThemeContainerView {
-        if let container { return container }
-        let created = ThemeContainerView()
-        container = created
-        syncContainerVisibility()
-        return created
-    }
-
-    /// SwiftUI 重建容器（窗口重开等）时迁移池实例，绝不重建 WebView
-    func adoptContainer(_ candidate: ThemeContainerView) {
-        guard candidate !== container else { return }
-        container = candidate
-        let views = themeViews.sorted { $0.key < $1.key }.map { $0.value }
-        for web in views {
-            web.removeFromSuperview()
-            candidate.attach(web)
+    /// 主窗口获焦/出现时装容器（SwiftUI 窗口在 didFinishLaunching 之后才创建，
+    /// launch() 时通常还不存在；新窗口获焦时容器整体迁移过去，池实例不重建）
+    private func observeWindows() {
+        windowObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            guard let window = note.object as? NSWindow,
+                  window.title.hasPrefix("DSH Desktop") else { return }
+            Task { @MainActor [weak self] in
+                self?.ensureContainerInstalled()
+            }
         }
+    }
+
+    /// 容器装入主窗口。幂等：已在当前主窗口壳内则只同步可见性。
+    /// 结构（根治 z-order，见 ThemeContainerView 头注释）：
+    /// window.contentView = WindowShellView [ NSHostingView(官方 WebView), 主题容器, 拖拽带 ]
+    private func ensureContainerInstalled() {
+        guard let window = Self.mainDSHWindow() else { return }
+        wrapContentViewIfNeeded(window)
+        guard let shell = window.contentView else { return }
+        let view = container ?? ThemeContainerView()
+        container = view
+        if view.superview === shell {
+            syncContainerVisibility()
+            return
+        }
+        view.removeFromSuperview()
+        view.frame = shell.bounds
+        view.autoresizingMask = [.width, .height]
+        // 壳内恒在 hosting（官方 WebView）之上、拖拽带之下（顶部拖拽不受影响）
+        if let strip = shell.subviews.first(where: { $0 is DragStripView }) {
+            shell.addSubview(view, positioned: .below, relativeTo: strip)
+        } else {
+            shell.addSubview(view)
+        }
+        Log.info("主题层容器已装入窗口壳（frame=\(Int(view.frame.width))x\(Int(view.frame.height))）")
         syncContainerVisibility()
     }
 
-    /// 官方 Web 面在屏状态（ThemePoolHost.updateNSView 每次渲染同步）
-    func setWebSurfaceAvailable(_ available: Bool) {
-        webSurfaceAvailable = available
+    /// 把 SwiftUI 窗口的 contentView（NSHostingView）原地包进 WindowShellView。
+    /// 已是壳则跳过。包壳时迁移已直装在 hosting 里的既有覆盖层（拖拽带等），
+    /// 防其留在 hosting 内被 SwiftUI 重排盖住（拖拽带历史 bug 的残留路径）。
+    private func wrapContentViewIfNeeded(_ window: NSWindow) {
+        guard let hosting = window.contentView, !(hosting is WindowShellView) else { return }
+        let shell = WindowShellView(frame: hosting.frame)
+        shell.autoresizingMask = hosting.autoresizingMask
+        let adopted = hosting.subviews.filter { $0 is DragStripView || $0 is ThemeContainerView }
+        window.contentView = shell
+        hosting.translatesAutoresizingMaskIntoConstraints = false
+        shell.addSubview(hosting)
+        NSLayoutConstraint.activate([
+            hosting.leadingAnchor.constraint(equalTo: shell.leadingAnchor),
+            hosting.trailingAnchor.constraint(equalTo: shell.trailingAnchor),
+            hosting.topAnchor.constraint(equalTo: shell.topAnchor),
+            hosting.bottomAnchor.constraint(equalTo: shell.bottomAnchor),
+        ])
+        for overlay in adopted {
+            shell.addSubview(overlay)   // 覆盖层入壳，恒在 hosting 之上
+        }
+        Log.info("主窗口 contentView 已包壳（NSHostingView → WindowShellView），覆盖层顺序归协调器")
+    }
+
+    /// 主窗口选择：优先当前获焦的 DSH 窗口（多窗时主题跟焦走），否则任一可见 DSH 窗
+    private static func mainDSHWindow() -> NSWindow? {
+        if let key = NSApp.keyWindow, key.title.hasPrefix("DSH Desktop") { return key }
+        return NSApp.windows.first { $0.isVisible && $0.title.hasPrefix("DSH Desktop") }
+    }
+
+    /// 一次性层级留痕（z-order 排障证据链）：主窗口 contentView 往下 3 层的视图树。
+    /// afterSwitch=true 为切换后那一份（验证包壳顺序在 SwiftUI 重渲染后仍守住）
+    private func dumpWindowHierarchyOnce(afterSwitch: Bool = false) {
+        if afterSwitch {
+            guard !didDumpHierarchyAfterSwitch else { return }
+            didDumpHierarchyAfterSwitch = true
+        } else {
+            guard !didDumpHierarchy else { return }
+            didDumpHierarchy = true
+        }
+        guard let contentView = Self.mainDSHWindow()?.contentView else { return }
+        Log.info("== 主窗口层级 dump（一次性）==")
+        func describe(_ view: NSView, depth: Int) {
+            let pad = String(repeating: "  ", count: depth)
+            Log.info("\(pad)\(type(of: view)) \(Int(view.frame.width))x\(Int(view.frame.height))"
+                     + " hidden=\(view.isHidden)")
+            guard depth < 3 else { return }
+            for sub in view.subviews { describe(sub, depth: depth + 1) }
+        }
+        describe(contentView, depth: 0)
+    }
+
+    /// 官方 Web 面在屏状态推导（与 ContentView 的 showWeb 同公式）+ 联动主题层显隐
+    private func updateWebSurfaceAvailable() {
+        var disconnected = false
+        if case .error = server.status, app.pageLoaded { disconnected = true }
+        webSurfaceAvailable = server.status == .running || disconnected
         syncContainerVisibility()
     }
 
@@ -245,6 +333,7 @@ final class ThemeCoordinator: NSObject, ObservableObject {
             themeWantedBeforeOfficialReady = id
             return
         }
+        ensureContainerInstalled()
         if case .theme(let current) = activeAppearance, current == id,
            let web = themeViews[id], web.handshakeResolved {
             pendingTarget = nil
@@ -282,6 +371,11 @@ final class ThemeCoordinator: NSObject, ObservableObject {
     }
 
     private func confirmSwitch(to target: ThemeAppearance) {
+        ensureContainerInstalled()
+        // 先落位再显隐：syncContainerVisibility 读 activeAppearance 决定容器显藏，
+        // 若等 switch 跑完再赋值，此刻仍是旧外观 → 容器被判藏（真机 dump 实锤过）
+        activeAppearance = target
+        app.activeThemeID = target.id
         Log.info("confirmSwitch → \(target.id)")
         switch target {
         case .official:
@@ -296,9 +390,8 @@ final class ThemeCoordinator: NSObject, ObservableObject {
             if let container {
                 crossfadeWithinContainer(from: visibleThemeView(excluding: id), to: web, in: container)
             }
+            dumpWindowHierarchyOnce(afterSwitch: true)
         }
-        activeAppearance = target
-        app.activeThemeID = target.id
         pendingTarget = nil
         themeWantedBeforeOfficialReady = nil
         if case .theme(let switchedID) = target {
