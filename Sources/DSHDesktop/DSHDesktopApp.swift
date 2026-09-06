@@ -15,62 +15,6 @@ struct DSHDesktopApp: App {
         }
         .defaultSize(width: 1280, height: 840)
         .windowStyle(.hiddenTitleBar)
-        .commands {
-            // 注意：不要用 CommandGroup(replacing: .newItem) 去掉“新建窗口”——
-            // 该用法在 macOS 15.x 上有已知 bug，会导致菜单项在打开时随机消失。
-            // “新建窗口”的隐藏改由 AppDelegate 以 AppKit 方式处理（见 hideNewItemIfNeeded）。
-
-            CommandMenu("服务器") {
-                Button(server.status == .running ? "停止服务器" : "启动服务器") {
-                    if server.status == .running {
-                        server.stop()
-                    } else {
-                        server.start()
-                    }
-                }
-                // starting 中不可再操作；running 但进程不归我们管（attach 的
-                // 外部实例）时“停止”是空操作，禁用以免菜单撒谎。
-                // serverProcess 是 @Published，attach 完成后菜单会自动刷新。
-                .disabled(server.status == .starting
-                          || (server.status == .running && server.serverProcess == nil))
-
-                Divider()
-
-                Button("刷新页面") {
-                    NotificationCenter.default.post(name: .dshReloadRequested, object: nil)
-                }
-                Button("显示主窗口") {
-                    if let window = NSApp.windows.first(where: { $0.title.hasPrefix("DSH Desktop") }) {
-                        window.makeKeyAndOrderFront(nil)
-                        NSApp.activate(ignoringOtherApps: true)
-                    }
-                }
-                Button("在浏览器中打开") {
-                    NSWorkspace.shared.open(AppState.shared.url)
-                }
-                Button("前往开放平台") {
-                    NSWorkspace.shared.open(URL(string: "https://platform.deepseek.com/")!)
-                }
-
-                Divider()
-
-                Button("发送测试通知") {
-                    Task { @MainActor in
-                        await sendTestNotification()
-                    }
-                }
-            }
-
-            // ── 宿主保留菜单「通用」（主题插件协议 §5 rev1.7/1.7.1，B3 拍板形态）：
-            // 切换到默认主题 + 已装主题列表 + repository 派生四出口（关于/检查更新/
-            // 发送反馈/帮助中心）。SwiftUI 原生菜单——AppKit 原位插入会被 SwiftUI
-            // 渲染周期丢弃（真机实测），故保留菜单必须住在这里；主题声明的父级
-            // 菜单才走 ThemeCoordinator 的 AppKit 装配。
-            CommandMenu("通用") {
-                GeneralThemeMenu()
-            }
-        }
-
         Settings {
             SettingsView(appState: appState, server: server)
         }
@@ -406,59 +350,5 @@ extension AppDelegate: @preconcurrency UNUserNotificationCenterDelegate {
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
         completionHandler([.banner, .sound])
-    }
-}
-
-
-/// 宿主保留菜单「通用」（主题插件协议 §5 rev1.7/1.7.1，B3 拍板形态）：
-/// 切换到默认主题 + 已装主题列表 + repository 派生四出口（关于/检查更新/发送反馈/帮助中心）。
-/// SwiftUI 原生菜单——AppKit 原位插入会被 SwiftUI 渲染周期丢弃（真机实测），
-/// 保留菜单必须住在这里；主题声明的父级菜单才走 ThemeCoordinator 的 AppKit 装配。
-struct GeneralThemeMenu: View {
-    @ObservedObject private var appState = AppState.shared
-
-    private var selectableThemes: [ThemeInfo] {
-        appState.themes.filter {
-            $0.id != "official" && !$0.incompatible
-                && ($0.state == "enabled" || $0.state == "installed")
-        }
-    }
-
-    var body: some View {
-        EmptyView()
-        // BISECT: Group { switchBackButton; themeListSection; repoOutletSection }
-    }
-
-    @ViewBuilder
-    private var switchBackButton: some View {
-        Button("切换到默认主题") {
-            ThemeCoordinator.shared.selectOfficial()
-        }
-        .disabled(appState.activeThemeID == "official" || !appState.themeSDKAvailable)
-    }
-
-    @ViewBuilder
-    private var themeListSection: some View {
-        if !selectableThemes.isEmpty {
-            Divider()
-            ForEach(selectableThemes) { info in
-                Button("切换到 \(info.name)") {
-                    ThemeCoordinator.shared.select(info.id)
-                }
-                .disabled(info.active)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var repoOutletSection: some View {
-        if let repo = appState.activeThemeRepository, !repo.isEmpty,
-           let name = appState.activeThemeName {
-            Divider()
-            Button("关于 \(name)") { ThemeCoordinator.shared.openRepoPage(repo, "/releases") }
-            Button("检查更新（\(name)）") { ThemeCoordinator.shared.openRepoPage(repo, "/releases") }
-            Button("发送反馈") { ThemeCoordinator.shared.openRepoPage(repo, "/issues/new/choose") }
-            Button("帮助中心") { ThemeCoordinator.shared.openRepoPage(repo, "/wiki") }
-        }
     }
 }

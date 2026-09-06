@@ -93,8 +93,6 @@ final class ThemeCoordinator: NSObject, ObservableObject {
     private var menuBarServing: ThemeAppearance?
     /// 当前装配出的整套菜单（重申检测用：NSApp.mainMenu 身份变化 = 被外部重置）
     private var assembledMenu: NSMenu?
-    /// appName 替换前的应用菜单原标题
-    private var savedAppMenuTitle: String?
 
 
     // MARK: - 启动接线（AppDelegate.applicationDidFinishLaunching 调用）
@@ -140,94 +138,101 @@ final class ThemeCoordinator: NSObject, ObservableObject {
         Log.info("菜单栏快照已取（\(items.count) 个顶级项：\(items.map { $0.title }.joined(separator: " / "))）")
     }
 
-    /// confirmSwitch / 崩溃回退后调用：按当前外观装配菜单栏（幂等）
+    /// confirmSwitch / 崩溃回退后调用：按当前外观装配菜单栏（幂等；主题态延迟让位
+    /// 本轮 @Published 重排）。终态架构 = AppKit 全量所有权：SwiftUI .commands 已整体
+    /// 移除（其响应式重建会原地改写菜单栏且对象身份不变，AppKit 侧无法检测——真机
+    /// 实测），菜单栏由本协调器独家组装，SwiftUI 零参与即零争夺。
     private func applyMenuBar() {
         if case .theme(let id) = activeAppearance {
             guard menuBarServing != activeAppearance else { return }
             menuBarServing = .theme(id)
-            Log.info("applyMenuBar → 换装 theme:\(id)（整套替换赋值，rev1.7.2 同名合并）")
-            installThemeMenuBar(themeID: id)
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 350_000_000)   // 让位本轮 @Published 重排
+                guard let self, case .theme(let served) = self.menuBarServing, served == id else { return }
+                self.assembleThemeMenuBar(themeID: id)
+            }
         } else {
             guard menuBarServing != .official else { return }
             menuBarServing = .official
-            Log.info("applyMenuBar → 还原 official")
-            restoreDefaultMenuBar()
+            assembleOfficialMenuBar()
         }
     }
 
-    /// 整套替换装配（rev1.7.2 同名合并）：构建新 NSMenu 后一次性赋给 NSApp.mainMenu
-    /// （AppKit 经典刷新路径；真机实测原位 insertItem 会被 SwiftUI 渲染周期无声丢弃
-    /// 且不触发重绘）。结构 = [应用菜单(appName)] + [主题父级×N（同名系统菜单合并：
-    /// 主题项在上 + 分隔线 + 系统 role 项 copy() 并入其下，系统语义/快捷键原样保留）]
-    /// + [SwiftUI「通用」保留菜单沿用] + [其余宿主项沿用]。还原 = 快照项重建再赋值。
-    /// SwiftUI 若整体重申自己的菜单，由身份重申检测（装配后三拍 + 应用激活/获焦）
-    /// 发现 NSApp.mainMenu 指针变化并重装。
-    private func installThemeMenuBar(themeID: String) {
-        takeMenuSnapshotIfNeeded()
-        guard menuSnapshotTaken, let current = NSApp.mainMenu else {
-            Log.warn("菜单快照/mainMenu 未就绪，本轮跳过主题菜单装配（重申机制会补装）")
-            return
-        }
-        let manifest = manifest(for: themeID)
-        let newMenu = NSMenu()
-        var mergedHostTitles: [String] = []
-        var themeParents = 0
+    // MARK: AppKit 菜单栏工厂（官方态/主题态共用基座，全部项为全新/克隆对象）
 
-        // 1) 应用菜单：沿用原对象；appName 尽力替换（rev1.7.2：独立于合并生效）
-        if let appItem = current.items.first {
-            if savedAppMenuTitle == nil { savedAppMenuTitle = appItem.title }
-            if let appName = manifest?.appName, !appName.isEmpty {
-                appItem.title = appName
-                appItem.submenu?.title = appName
-            }
-            newMenu.addItem(appItem)
-        }
+    private func makeItem(_ title: String, _ action: Selector) -> NSMenuItem {
+        let mi = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        mi.target = self
+        return mi
+    }
 
-        // 2) 主题父级：同名（规范化角色，中英别名同判）合并系统项；非同名作新父级
-        var consumed = Set<ObjectIdentifier>()
-        let hostItems = Array(current.items.dropFirst())
-        for group in manifest?.menus ?? [] {
-            guard let title = group.title, !title.isEmpty, !group.items.isEmpty else { continue }
-            let role = canonicalMenuRole(title)
-            if role == "host-reserved" {
-                Log.info("菜单装配：主题父级「\(title)」撞宿主保留菜单名「通用」，忽略（宿主主权面，rev1.7.2）")
-                continue
-            }
-            let themeItem = buildThemeGroupMenu(group)
-            let hostItem = hostItems.first { item in
-                !consumed.contains(ObjectIdentifier(item))
-                    && canonicalMenuRole(item.title) == role
-            }
-            if let hostItem, let hostSub = hostItem.submenu {
-                let sub = NSMenu(title: title)
-                sub.autoenablesItems = false
-                for gi in group.items {
-                    if let mi = themedMenuItem(from: gi, groupTitle: title) { sub.addItem(mi) }
-                }
-                let hostCopies = hostSub.items.map { $0.copy() as! NSMenuItem }
-                if !hostCopies.isEmpty {
-                    sub.addItem(NSMenuItem.separator())
-                    for c in hostCopies { sub.addItem(c) }
-                }
-                themeItem.submenu = sub
-                consumed.insert(ObjectIdentifier(hostItem))
-                mergedHostTitles.append(title)
-                Log.info("菜单合并：主题父级「\(title)」置位，并入系统项 \(hostCopies.count) 个（分隔线分隔；系统语义/快捷键经 copy 原样保留，rev1.7.2）")
-            }
-            newMenu.addItem(themeItem)
-            themeParents += 1
-        }
+    /// AppKit 版「服务器」菜单（承接原 SwiftUI .commands；动态启停标题随 server.status）
+    private func buildServerMenu() -> NSMenuItem {
+        let container = NSMenuItem(title: "服务器", action: nil, keyEquivalent: "")
+        let sub = NSMenu(title: "服务器")
+        sub.autoenablesItems = false
+        let running = server.status == .running
+        let toggle = makeItem(running ? "停止服务器" : "启动服务器", #selector(toggleServer(_:)))
+        toggle.isEnabled = server.status != .starting
+        sub.addItem(toggle)
+        sub.addItem(NSMenuItem.separator())
+        sub.addItem(makeItem("刷新页面", #selector(refreshActiveSurface)))
+        sub.addItem(makeItem("显示主窗口", #selector(showMainWindow)))
+        sub.addItem(makeItem("在浏览器中打开", #selector(openInBrowser)))
+        sub.addItem(makeItem("前往开放平台", #selector(openPlatform)))
+        sub.addItem(NSMenuItem.separator())
+        sub.addItem(makeItem("发送测试通知", #selector(sendTestNotification)))
+        container.submenu = sub
+        return container
+    }
 
-        // 3) 沿用宿主其余顶级项（SwiftUI「通用」、未被合并的系统菜单等）
-        for item in hostItems where !consumed.contains(ObjectIdentifier(item)) {
-            newMenu.addItem(item)
+    /// AppKit 版宿主保留菜单「通用」（B3 拍板形态：切换到默认主题 + 主题列表 +
+    /// repository 派生四出口；rev1.7.2）
+    private func buildGeneralMenu(themeID: String?, manifest: ThemeManifest?) -> NSMenuItem {
+        let container = NSMenuItem(title: "通用", action: nil, keyEquivalent: "")
+        let sub = NSMenu(title: "通用")
+        sub.autoenablesItems = false
+        let back = makeItem("切换到默认主题", #selector(reservedSwitchOfficial(_:)))
+        back.isEnabled = activeAppearance != .official
+        sub.addItem(back)
+        for info in app.themes where info.id != "official"
+            && !info.incompatible && (info.state == "enabled" || info.state == "installed") {
+            let mi = makeItem("切换到 \(info.name)", #selector(reservedSwitchTheme(_:)))
+            mi.representedObject = info.id
+            if info.id == themeID { mi.state = .on }
+            sub.addItem(mi)
         }
+        if let repo = manifest?.repository, !repo.isEmpty, !repo.hasPrefix("OWNER/"),
+           let name = manifest?.name {
+            sub.addItem(NSMenuItem.separator())
+            let about = makeItem("关于 \(name)", #selector(reservedOpenURL(_:)))
+            about.representedObject = "https://github.com/\(repo)/releases"
+            let checkUpdate = makeItem("检查更新（\(name)）", #selector(reservedOpenURL(_:)))
+            checkUpdate.representedObject = "https://github.com/\(repo)/releases"
+            let feedback = makeItem("发送反馈", #selector(reservedOpenURL(_:)))
+            feedback.representedObject = "https://github.com/\(repo)/issues/new/choose"
+            let help = makeItem("帮助中心", #selector(reservedOpenURL(_:)))
+            help.representedObject = "https://github.com/\(repo)/wiki"
+            sub.addItem(about)
+            sub.addItem(checkUpdate)
+            sub.addItem(feedback)
+            sub.addItem(help)
+        }
+        container.submenu = sub
+        return container
+    }
 
-        assembledMenu = newMenu
-        NSApp.mainMenu = newMenu
-        Log.info("菜单栏已换装 theme:\(themeID)：主题父级 \(themeParents) 组（同名合并 \(mergedHostTitles.count)：\(mergedHostTitles.joined(separator: "、")))，"
-                 + "顶级项=\(newMenu.items.map { $0.title }.joined(separator: " / "))")
-        scheduleMenuReassert(themeID: themeID)
+    /// 规范化菜单角色（rev1.7.2 合并判定：中英别名同判；「通用」为宿主保留名恒忽略）
+    private func canonicalMenuRole(_ title: String) -> String? {
+        switch title.lowercased() {
+        case "file", "文件": return "file"
+        case "edit", "编辑": return "edit"
+        case "view", "显示": return "view"
+        case "window", "窗口": return "window"
+        case "help", "帮助": return "help"
+        case "通用": return "host-reserved"
+        default: return nil
+        }
     }
 
     /// 主题菜单项构建（分隔线/快捷键/命令 id；点按经 themeMenuCommand 派发主题页）
@@ -244,8 +249,28 @@ final class ThemeCoordinator: NSObject, ObservableObject {
         return mi
     }
 
-    /// SwiftUI 会在切换渲染周期后重申自己的菜单（真机实测：原位插入被无声丢弃）——
-    /// 延迟两拍校验，发现被重置就重装（幂等；官方态被重申 = 默认菜单，无需处理）
+    /// NSMenuItem 手工克隆：绕开 copy() 的 representedObject NSCopying 限制；
+    /// target/action/representedObject 按引用保留（SwiftUI 项的功能绑定不丢）
+    private static func clone(_ item: NSMenuItem) -> NSMenuItem {
+        let c = NSMenuItem(title: item.title, action: item.action, keyEquivalent: item.keyEquivalent)
+        c.target = item.target
+        c.representedObject = item.representedObject
+        c.keyEquivalentModifierMask = item.keyEquivalentModifierMask
+        c.image = item.image
+        c.state = item.state
+        c.toolTip = item.toolTip
+        c.isEnabled = item.isEnabled
+        c.isHidden = item.isHidden
+        if let sub = item.submenu {
+            let subCopy = NSMenu(title: sub.title)
+            subCopy.autoenablesItems = sub.autoenablesItems
+            for it in sub.items { subCopy.addItem(clone(it)) }
+            c.submenu = subCopy
+        }
+        return c
+    }
+
+    /// SwiftUI/窗口生命周期会重建菜单（无 .commands 后频率大降）：身份变化即重装
     private func scheduleMenuReassert(themeID: String) {
         Task { @MainActor [weak self] in
             for delay: UInt64 in [800_000_000, 3_000_000_000, 10_000_000_000] {
@@ -259,33 +284,118 @@ final class ThemeCoordinator: NSObject, ObservableObject {
     private func reassertMenuBarIfNeeded(servedID: String) {
         guard let assembled = assembledMenu else { return }
         guard NSApp.mainMenu !== assembled else { return }
-        Log.info("菜单被外部重置（SwiftUI 重申，mainMenu 身份变化），重新装配 theme:\(servedID)")
-        installThemeMenuBar(themeID: servedID)
+        Log.info("菜单被外部重置，重新装配 theme:\(servedID)")
+        assembleThemeMenuBar(themeID: servedID)
     }
 
-    private func restoreDefaultMenuBar() {
-        if let saved = savedAppMenuTitle, let appItem = defaultMenuItems.first {
-            appItem.title = saved   // appName 回写（对象沿用自快照）
-        }
-        savedAppMenuTitle = nil
+    /// 官方态整套装配：快照克隆（SwiftUI 自动菜单：应用/文件/编辑/显示/窗口/帮助）
+    /// + AppKit 自有「服务器」「通用」插位（仿原布局：显示后/窗口前）
+    private func assembleOfficialMenuBar() {
+        guard menuSnapshotTaken else { return }
         let m = NSMenu()
-        for item in defaultMenuItems { m.addItem(item) }
-        assembledMenu = nil
+        for (idx, item) in defaultMenuItems.enumerated() {
+            let title = item.title.lowercased()
+            if title == "显示" || title == "view" { m.addItem(buildServerMenu()) }
+            if title == "窗口" || title == "window" { m.addItem(buildGeneralMenu(themeID: nil, manifest: nil)) }
+            m.addItem(Self.clone(item))
+        }
+        assembledMenu = m
         NSApp.mainMenu = m
-        Log.info("菜单栏已还原 official（顶级项=\(m.items.map { $0.title }.joined(separator: " / "))）")
+        Log.info("菜单栏 = official 默认（\(m.items.count) 项：\(m.items.map { $0.title }.joined(separator: " / "))）")
     }
 
-    /// 规范化菜单角色（rev1.7.2 合并判定：中英别名同判；「通用」为宿主保留名恒忽略）
-    private func canonicalMenuRole(_ title: String) -> String? {
-        switch title.lowercased() {
-        case "file", "文件": return "file"
-        case "edit", "编辑": return "edit"
-        case "view", "显示": return "view"
-        case "window", "窗口": return "window"
-        case "help", "帮助": return "help"
-        case "通用": return "host-reserved"
-        default: return nil
+    /// 主题态整套装配（rev1.7.2 同名合并）：官方基座重建后织入主题父级——
+    /// 同名（规范化角色）组 = 主题项置顶 + 分隔线 + 系统 role 项克隆并入其下，
+    /// 菜单标题以主题声明为准；非同名组作为新父级插入应用菜单之后；
+    /// 「通用」按主题清单重建（活跃主题四出口）
+    private func assembleThemeMenuBar(themeID: String) {
+        guard menuSnapshotTaken else { return }
+        let manifest = manifest(for: themeID)
+        let m = NSMenu()
+        var consumedRoles = Set<String>()
+        // 基座：快照克隆（跳过被合并角色对应的克隆——由主题组接管其位）
+        for item in defaultMenuItems {
+            let role = canonicalMenuRole(item.title)
+            if let role, role != "host-reserved", (manifest?.menus ?? []).contains(where: {
+                canonicalMenuRole($0.title ?? "") == role && !($0.items ?? []).isEmpty
+            }) {
+                consumedRoles.insert(role)
+                continue   // 该位由主题合并组接管
+            }
+            if item.title.lowercased() == "显示" || item.title.lowercased() == "view" {
+                m.addItem(buildServerMenu())
+            }
+            m.addItem(Self.clone(item))
+            if item.title.lowercased() == "文件" || item.title.lowercased() == "file" {
+                // 通用紧随文件后占位（原布局通用在窗口前；文件后为次优稳定位）
+                m.addItem(buildGeneralMenu(themeID: themeID, manifest: manifest))
+            }
         }
+        // 主题父级（同名合并组替换基座位；非同名组插应用菜单之后）
+        var appended: [NSMenuItem] = []
+        for group in (manifest?.menus ?? []).reversed() {
+            guard let title = group.title, !title.isEmpty, !group.items.isEmpty else { continue }
+            let role = canonicalMenuRole(title)
+            if role == "host-reserved" {
+                Log.info("菜单装配：主题父级「\(title)」撞宿主保留菜单名「通用」，忽略（宿主主权面，rev1.7.2）")
+                continue
+            }
+            let themeItem = buildThemeGroupMenu(group)
+            if let role, consumedRoles.contains(role) {
+                // 同名合并：基座该角色的克隆已跳过；把系统 role 项克隆并到主题组之下
+                if let hostOriginal = defaultMenuItems.first(where: { canonicalMenuRole($0.title) == role }),
+                   let hostSub = hostOriginal.submenu {
+                    let hostCopies = hostSub.items.map { Self.clone($0) }
+                    if !hostCopies.isEmpty {
+                        themeItem.submenu?.addItem(NSMenuItem.separator())
+                        for c in hostCopies { themeItem.submenu?.addItem(c) }
+                    }
+                }
+                consumedRoles.remove(role)   // 已接管
+                Log.info("菜单合并：主题父级「\(title)」置位并并入系统项（rev1.7.2）")
+            }
+            m.addItem(themeItem)
+            appended.append(themeItem)
+        }
+        // 主题父级提前到应用菜单之后（reversed 插入法：倒序插 index 1 → 正序呈现）
+        for item in appended.reversed() {
+            let idx = m.index(of: item)
+            if idx != NSNotFound { m.removeItem(item); m.insertItem(item, at: 1) }
+        }
+        assembledMenu = m
+        NSApp.mainMenu = m
+        Log.info("菜单栏已换装 theme:\(themeID)：主题父级 \(appended.count) 组，"
+                 + "顶级项=\(m.items.map { $0.title }.joined(separator: " / "))")
+    }
+
+    @objc private func toggleServer(_ sender: NSMenuItem) {
+        if server.status == .running { server.stop() } else { server.start() }
+    }
+    @objc private func refreshActiveSurface(_ sender: NSMenuItem) {
+        if case .theme(let id) = activeAppearance {
+            themeViews[id]?.reload()
+        } else {
+            NotificationCenter.default.post(name: .dshReloadRequested, object: nil)
+        }
+    }
+    @objc private func showMainWindow(_ sender: NSMenuItem) {
+        if let window = NSApp.windows.first(where: { $0.title.hasPrefix("DSH Desktop") }) {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+    @objc private func openInBrowser(_ sender: NSMenuItem) {
+        NSWorkspace.shared.open(app.url)
+    }
+    @objc private func openPlatform(_ sender: NSMenuItem) {
+        if let url = URL(string: "https://platform.deepseek.com/") { NSWorkspace.shared.open(url) }
+    }
+    @objc private func sendTestNotification(_ sender: NSMenuItem) {
+        let content = UNMutableNotificationContent()
+        content.title = "DSH Desktop"
+        content.body = "原生通知通道正常"
+        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
     }
 
     private func buildThemeGroupMenu(_ group: ThemeManifest.MenuGroup) -> NSMenuItem {
