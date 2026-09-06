@@ -45,8 +45,37 @@ struct BootInfo: Decodable {
     }
 }
 
-/// theme.json manifest（宿主只消费 entry/icons 等少量字段）
+/// theme.json manifest（宿主只消费 entry/icons/menus 等少量字段）
 struct ThemeManifest: Decodable {
+    /// rev 1.7 菜单声明（声明式纯数据，命令语义由主题页自定义）
+    struct MenuGroup: Decodable {
+        struct Item: Decodable {
+            let id: String?
+            let title: String?
+            let shortcut: String?
+            let separator: Bool?
+
+            private enum CodingKeys: String, CodingKey { case id, title, shortcut, separator }
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                id = try? c.decode(String.self, forKey: .id)
+                title = try? c.decode(String.self, forKey: .title)
+                shortcut = try? c.decode(String.self, forKey: .shortcut)
+                separator = try? c.decode(Bool.self, forKey: .separator)
+            }
+        }
+
+        let title: String?
+        let items: [Item]
+
+        private enum CodingKeys: String, CodingKey { case title, items }
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            title = try? c.decode(String.self, forKey: .title)
+            items = (try? c.decode([Item].self, forKey: .items)) ?? []
+        }
+    }
+
     struct DockIcons: Decodable {
         let light: String?
         let dark: String?
@@ -73,15 +102,22 @@ struct ThemeManifest: Decodable {
     let version: String?
     let entry: Entry?
     let icons: DockIcons?
+    let menus: [MenuGroup]?
+    let appName: String?
+    let repository: String?
 
-    private enum CodingKeys: String, CodingKey { case id, name, version, entry, icons }
+    private enum CodingKeys: String, CodingKey { case id, name, version, entry, icons, menus, appName, repository }
 
-    init(id: String?, name: String?, version: String?, entry: Entry?, icons: DockIcons?) {
+    init(id: String?, name: String?, version: String?, entry: Entry?, icons: DockIcons?,
+         menus: [MenuGroup]? = nil, appName: String? = nil, repository: String? = nil) {
         self.id = id
         self.name = name
         self.version = version
         self.entry = entry
         self.icons = icons
+        self.menus = menus
+        self.appName = appName
+        self.repository = repository
     }
 
     init(from decoder: Decoder) throws {
@@ -91,6 +127,9 @@ struct ThemeManifest: Decodable {
         version = try? c.decode(String.self, forKey: .version)
         entry = try? c.decode(Entry.self, forKey: .entry)
         icons = try? c.decode(DockIcons.self, forKey: .icons)
+        menus = try? c.decode([MenuGroup].self, forKey: .menus)
+        appName = try? c.decode(String.self, forKey: .appName)
+        repository = try? c.decode(String.self, forKey: .repository)
     }
 }
 

@@ -28,9 +28,6 @@ struct SettingsView: View {
     @State private var isCheckingLauncher = false
     @State private var isUpdatingLauncher = false
     @State private var launcherUpdateMessage: String?
-    // 主题切换进行中的目标 id（协议 B3 切换中反馈）：成功随 activeThemeID 变化清除，
-    // 失败（activeThemeID 不动）由超时兜底清除——5s 握手看门狗 + 余量
-    @State private var pendingThemeID: String?
 
     /// 一次检查里单个通道的更新候选（主推/备选共用）
     private struct UpdateCandidate: Identifiable {
@@ -142,12 +139,9 @@ struct SettingsView: View {
                 }
             }
 
-            // —— 主题选择（主题插件协议 v1 rev1.5 B3：设置页内选择入口）——
-            // 位置：紧随「状态」组的桥接插件信息之后——主题与桥接同属后端生态
-            // 组件；选择类交互独立成组，不与只读状态行混排。
-            Section("主题") {
-                themeSectionBody
-            }
+            // —— 主题选择入口已按 B3 拍板（2026-09-06）移除：壳原生设置窗不再作为
+            // 主题入口，入口 = 主题自身设置面板按钮 + 壳保留菜单「通用」（B7）。
+            // official 侧后续由 theme-picker client 小插件承接（宿主指南 §6.1）。
 
             Section("关于") {
                 LabeledContent("DSH Desktop", value: appVersion)
@@ -209,11 +203,6 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        // 切换成功（ThemeCoordinator 写入 activeThemeID）→ 撤下切换中提示，
-        // 勾选随发布态移动；失败路径由 selectTheme 的超时兜底清除
-        .onChange(of: appState.activeThemeID) { _ in
-            pendingThemeID = nil
-        }
         .frame(width: 480)
         .onAppear {
             launchAtLogin = isLaunchAtLoginEnabled()
@@ -226,66 +215,8 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - 主题选择（主题插件协议 v1 rev1.5 B3）
-
-    /// 主题组内容（拆小视图规避 SwiftUI 大表达式类型检查超时，同 dshUpdateControls 做法）。
-    /// 刷新完全依赖 AppState 发布态（themes / activeThemeID / themeSDKAvailable），无额外动画。
-    @ViewBuilder
-    private var themeSectionBody: some View {
-        if appState.themeSDKAvailable {
-            // official 虚拟主题永远置顶且恒可选（兜底：即便清单缺它也固定在列）
-            ThemeRowView(
-                info: ThemeInfo(id: "official", name: "官方界面", version: nil,
-                                state: nil, active: appState.activeThemeID == "official",
-                                incompatible: false),
-                isActive: appState.activeThemeID == "official",
-                isPending: pendingThemeID == "official",
-                onSelect: { selectTheme(id: "official") })
-            ForEach(appState.themes.filter { $0.id != "official" }) { info in
-                ThemeRowView(
-                    info: info,
-                    isActive: appState.activeThemeID == info.id,
-                    isPending: pendingThemeID == info.id,
-                    onSelect: { selectTheme(id: info.id) })
-            }
-            if let pendingThemeID {
-                Text("正在切换到 \(themeDisplayName(pendingThemeID))…（失败会停留当前外观并发系统通知）")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        } else {
-            // sdk 缺席不报错只提示；后端离线时是「尚未检测」而非「未安装」
-            Text(server.status == .running
-                 ? "未检测到 dsh-theme-sdk（主题协议宿主）"
-                 : "服务器未运行，主题信息待后端启动后检测。")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    /// 点击主题行：official 走 selectOfficial（先尽力同步 sdk 侧再本地显隐），
-    /// 主题走 select（POST 激活→预热→握手→切换；失败停留当前外观+系统通知，
-    /// 设置页勾选随 activeThemeID 真值呈现，boot-info 轮询会纠正偏差）
-    private func selectTheme(id: String) {
-        guard id != appState.activeThemeID else { return }   // 点活跃主题：无操作
-        pendingThemeID = id
-        if id == "official" {
-            ThemeCoordinator.shared.selectOfficial()
-        } else {
-            ThemeCoordinator.shared.select(id)
-        }
-        // 超时兜底：切换失败（activeThemeID 不变）时撤下切换中提示
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 6_500_000_000)
-            if pendingThemeID == id { pendingThemeID = nil }
-        }
-    }
-
-    /// 主题显示名：official 固定叫官方界面；其余取清单 name，清单缺失退回 id
-    private func themeDisplayName(_ id: String) -> String {
-        if id == "official" { return "官方界面" }
-        return appState.themes.first { $0.id == id }?.name ?? id
-    }
+    // MARK: - 主题选择（B3 拍板后已迁出：入口=主题设置面板按钮+壳保留菜单「通用」；
+    // 本文件原主题 Section 与 ThemeRowView 已按 2026-09-06 拍板移除）
 
     /// DSH 更新 UI（拆为小组件，规避 SwiftUI 大表达式类型检查超时）
     @ViewBuilder
@@ -803,68 +734,6 @@ struct SettingsView: View {
                     + "\nLauncher 更新失败（已恢复原状）：\(error.localizedDescription)"
             }
             isUpdatingLauncher = false
-        }
-    }
-}
-
-/// 主题选择行（设置页专用）：name + version + 状态标注；当前主题右侧打勾，
-/// incompatible 与 state 非 enabled/installed 的置灰禁选，official 恒可选（兜底）。
-private struct ThemeRowView: View {
-    let info: ThemeInfo
-    let isActive: Bool
-    let isPending: Bool
-    let onSelect: () -> Void
-
-    /// 可选性：official 无 state 概念恒可选；其余 incompatible 一票否决，
-    /// state 非 enabled/installed（禁用/未安装等）照常禁选
-    private var selectable: Bool {
-        if info.id == "official" { return true }
-        if info.incompatible { return false }
-        if let state = info.state, state != "enabled", state != "installed" { return false }
-        return true
-    }
-
-    var body: some View {
-        Button(action: onSelect) {
-            HStack(spacing: 8) {
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Text(info.name)
-                        if let version = info.version, !version.isEmpty {
-                            Text("v\(version)")
-                        }
-                    }
-                }
-                Spacer()
-                if info.incompatible {
-                    Text("不兼容")
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                } else if let state = info.state, state != "enabled", state != "installed" {
-                    Text(Self.stateLabel(state))
-                        .font(.caption)
-                }
-                if isActive {
-                    Image(systemName: "checkmark")
-                        .foregroundStyle(Color.accentColor)
-                } else if isPending {
-                    ProgressView()
-                        .controlSize(.small)
-                }
-            }
-            // .plain 按钮禁用时不自动置灰，整行手动降级为 secondary
-            .foregroundStyle(selectable ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
-        }
-        .buttonStyle(.plain)
-        .disabled(!selectable)
-    }
-
-    /// state → 中文标注（未识别的原样展示）
-    private static func stateLabel(_ state: String) -> String {
-        switch state {
-        case "disabled": return "已禁用"
-        case "not_installed": return "未安装"
-        default: return state
         }
     }
 }
