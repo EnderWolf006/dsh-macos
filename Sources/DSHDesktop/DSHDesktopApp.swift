@@ -60,6 +60,15 @@ struct DSHDesktopApp: App {
                     }
                 }
             }
+
+            // ── 宿主保留菜单「通用」（主题插件协议 §5 rev1.7/1.7.1，B3 拍板形态）：
+            // 切换到默认主题 + 已装主题列表 + repository 派生四出口（关于/检查更新/
+            // 发送反馈/帮助中心）。SwiftUI 原生菜单——AppKit 原位插入会被 SwiftUI
+            // 渲染周期丢弃（真机实测），故保留菜单必须住在这里；主题声明的父级
+            // 菜单才走 ThemeCoordinator 的 AppKit 装配。
+            CommandMenu("通用") {
+                GeneralThemeMenu()
+            }
         }
 
         Settings {
@@ -397,5 +406,59 @@ extension AppDelegate: @preconcurrency UNUserNotificationCenterDelegate {
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
         completionHandler([.banner, .sound])
+    }
+}
+
+
+/// 宿主保留菜单「通用」（主题插件协议 §5 rev1.7/1.7.1，B3 拍板形态）：
+/// 切换到默认主题 + 已装主题列表 + repository 派生四出口（关于/检查更新/发送反馈/帮助中心）。
+/// SwiftUI 原生菜单——AppKit 原位插入会被 SwiftUI 渲染周期丢弃（真机实测），
+/// 保留菜单必须住在这里；主题声明的父级菜单才走 ThemeCoordinator 的 AppKit 装配。
+struct GeneralThemeMenu: View {
+    @ObservedObject private var appState = AppState.shared
+
+    private var selectableThemes: [ThemeInfo] {
+        appState.themes.filter {
+            $0.id != "official" && !$0.incompatible
+                && ($0.state == "enabled" || $0.state == "installed")
+        }
+    }
+
+    var body: some View {
+        EmptyView()
+        // BISECT: Group { switchBackButton; themeListSection; repoOutletSection }
+    }
+
+    @ViewBuilder
+    private var switchBackButton: some View {
+        Button("切换到默认主题") {
+            ThemeCoordinator.shared.selectOfficial()
+        }
+        .disabled(appState.activeThemeID == "official" || !appState.themeSDKAvailable)
+    }
+
+    @ViewBuilder
+    private var themeListSection: some View {
+        if !selectableThemes.isEmpty {
+            Divider()
+            ForEach(selectableThemes) { info in
+                Button("切换到 \(info.name)") {
+                    ThemeCoordinator.shared.select(info.id)
+                }
+                .disabled(info.active)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var repoOutletSection: some View {
+        if let repo = appState.activeThemeRepository, !repo.isEmpty,
+           let name = appState.activeThemeName {
+            Divider()
+            Button("关于 \(name)") { ThemeCoordinator.shared.openRepoPage(repo, "/releases") }
+            Button("检查更新（\(name)）") { ThemeCoordinator.shared.openRepoPage(repo, "/releases") }
+            Button("发送反馈") { ThemeCoordinator.shared.openRepoPage(repo, "/issues/new/choose") }
+            Button("帮助中心") { ThemeCoordinator.shared.openRepoPage(repo, "/wiki") }
+        }
     }
 }

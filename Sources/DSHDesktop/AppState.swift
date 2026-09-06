@@ -58,6 +58,9 @@ final class AppState: ObservableObject {
     @Published var activeThemeID: String = "official"
     /// dsh-theme-sdk 是否已装（/themes 路由可达；404 = 未装）
     @Published var themeSDKAvailable: Bool = false
+    // 主题活跃仓址/名（rev1.7.1 四出口数据源；ThemeCoordinator 于 confirmSwitch 写入）
+    @Published var activeThemeRepository: String?
+    @Published var activeThemeName: String?
 
     // MARK: - 窗口增强（持久化）
 
