@@ -179,7 +179,9 @@ final class ThemeCoordinator: NSObject, ObservableObject {
         guard let first = NSApp.mainMenu?.items.first else { return }
         var wanted: String?
         if case .theme(let id) = activeAppearance {
-            wanted = manifest(for: id)?.appName.flatMap { $0.isEmpty ? nil : $0 }
+            // 只查缓存不触发读盘：轮询巡检高频调用，manifest 读取失败（未入缓存）
+            // 不缓存负结果，直读会造成每秒一次失败读盘 + WARN 刷屏
+            wanted = cachedManifest(for: id)?.appName.flatMap { $0.isEmpty ? nil : $0 }
         }
         if wanted == nil {
             wanted = Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String
@@ -188,6 +190,11 @@ final class ThemeCoordinator: NSObject, ObservableObject {
         let old = first.title
         first.title = wanted
         Log.info("应用菜单名已替换：「\(old)」→「\(wanted)」（manifest.appName；激活被系统重置后在此补设）")
+    }
+
+    /// manifest 只读缓存窥探（不触发磁盘读取）
+    private func cachedManifest(for id: String) -> ThemeManifest? {
+        manifests[id]
     }
 
     /// 装配完成核对（留痕）：实际 mainMenu 顶级与各菜单项数，供验收比对空壳/重复
@@ -248,7 +255,7 @@ final class ThemeCoordinator: NSObject, ObservableObject {
         let js = "(function(p){ try { if (typeof window.__DSH_MENU_DISPATCH__ === 'function') return 'protocol:' + window.__DSH_MENU_DISPATCH__(p);"
             + " var t = window.__dshThemeClient; if (t && typeof t.dispatchMenuCommand === 'function') return 'legacy:' + t.dispatchMenuCommand(p);"
             + " return 'no-dispatcher'; } catch (e) { return 'error:' + e; } })(\(json))"
-        Task { @MainActor [weak self] in
+        Task { @MainActor in
             let raw = (try? await web.evaluateJavaScript(js)) ?? "eval-failed"
             let result = String(describing: raw)
             let path: String
@@ -901,8 +908,10 @@ final class ThemeCoordinator: NSObject, ObservableObject {
     private func manifest(for id: String) -> ThemeManifest? {
         if let cached = manifests[id] { return cached }
         // theme.json 在伺服白名单外（HTTP 恒 404，协议 §4）——宿主直接读部署位磁盘。
-        // 路径 = $DSH_HOME/profiles/web/node_modules/dsh-theme-<id>/theme.json（生产 ~ = /Users）
-        let home = FileManager.default.homeDirectoryForCurrentUser
+        // 路径 = $DSH_HOME/profiles/web/node_modules/dsh-theme-<id>/theme.json（生产 ~ = /Users）。
+        // 排障/测试钩子：`-manifest-home <路径>` 启动参数可覆盖根目录（UserDefaults 参数域）
+        let home = UserDefaults.standard.string(forKey: "manifest-home")
+            .map { URL(fileURLWithPath: $0) } ?? FileManager.default.homeDirectoryForCurrentUser
         let url = home.appendingPathComponent(".dsh/profiles/web/node_modules/dsh-theme-\(id)/theme.json")
         guard let data = try? Data(contentsOf: url),
               let manifest = try? JSONDecoder().decode(ThemeManifest.self, from: data) else {

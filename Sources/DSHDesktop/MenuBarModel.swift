@@ -94,13 +94,14 @@ final class MenuBarModel: ObservableObject {
     }
 
     /// 主题 manifest.menus → 槽位组 + 同名合并组（rev1.7.2 合并语义落地）：
-    /// - 窗口角色组一律不建槽位（安全阀：系统窗口菜单固有项腾不掉，grok 声明项
-    ///   与之语义重合，直接用系统窗口菜单原生形态）
+    /// - 窗口角色组一律不建槽位（安全阀：整组让位系统窗口菜单原生形态）
     /// - 「通用」宿主保留名恒忽略
     /// - 显示（view）/帮助（help）角色组：同名 CommandMenu 并不并入活的系统菜单
     ///   （真机实测产生重复菜单）→ 走 CommandGroup placement 并入系统菜单位置
-    ///   （主题项在上），并剔除与系统固有项语义重合的声明项，防同菜单双份
-    /// - 文件/编辑角色组走槽位（宿主从启动即空体腾空系统文件/编辑菜单，槽位是唯一承载）
+    ///   （置于系统功能区之前），并剔除与系统固有项语义重合的声明项，防同菜单双份
+    /// - 文件/编辑角色组走槽位（宿主从启动即空体腾空系统文件/编辑菜单，槽位是唯一
+    ///   承载）：声明项做 role 项级语义匹配改挂系统 selector，缺席的系统标准项补齐
+    ///   重建；主题未声明 file/edit 组时回装宿主默认组（协议 §5-1/§5-3 降级兜底）
     /// 系统菜单本地化标题/固有项以 systemMenus 快照实测为准，不写死（随系统语言变化）。
     /// previousLabels = 上一态由本模型装出去的主题项标签：快照抓在重协调中途时
     /// 系统菜单里还残留着这些项（真机实证），不扣除会把主题自己的声明项误去重掉。
@@ -109,6 +110,10 @@ final class MenuBarModel: ObservableObject {
                            previousLabels: Set<String> = []) -> (slots: [MenuGroupSpec], merged: [String: MenuGroupSpec]) {
         var slots: [MenuGroupSpec] = []
         var merged: [String: MenuGroupSpec] = [:]
+        var coveredSlotRoles = Set<String>()
+        if manifest == nil {
+            Log.warn("manifest 不可用（缺 menus 声明或磁盘读取失败）：文件/编辑将回装宿主默认组（协议 §5-1/§5-3 降级）")
+        }
         for group in manifest?.menus ?? [] {
             guard let title = group.title, !title.isEmpty, !group.items.isEmpty else { continue }
             let role = ThemeCoordinator.canonicalMenuRole(title)
@@ -117,8 +122,8 @@ final class MenuBarModel: ObservableObject {
                 continue
             }
             if role == "window" {
-                Log.info("安全阀：窗口组「\(title)」并入系统菜单（系统窗口菜单固有项腾不掉，"
-                         + "声明项与系统项语义重合已去重），不建槽位、用系统窗口菜单原生形态")
+                Log.info("安全阀：窗口组「\(title)」整组并入系统窗口菜单（系统窗口菜单固有项腾不掉，"
+                         + "宿主不重复承载），不建槽位、用系统窗口菜单原生形态")
                 continue
             }
             if role == "view" || role == "help" {
@@ -139,24 +144,90 @@ final class MenuBarModel: ObservableObject {
                     }
                     merged[role!] = spec
                     Log.info("菜单合并：主题父级「\(title)」经 placement 并入系统「\(title)」菜单位置"
-                             + "（主题项在上，\(spec.items.count) 项，rev1.7.2）")
+                             + "（置于系统功能区之前，\(spec.items.count) 项，rev1.7.2）")
                 } else {
                     Log.info("菜单合并：主题父级「\(title)」声明项全部与系统固有项重合，系统菜单原生形态整体承担")
                 }
                 continue
             }
-            guard let spec = convertedGroup(group, dedupAgainst: nil) else { continue }
+            // file/edit/自定义角色 → 槽位承载（file/edit 组做 role 项级语义重建）
+            guard let spec = convertedGroup(group, dedupAgainst: nil, slotRole: role) else { continue }
+            if slots.count >= slotCapacity {
+                Log.warn("菜单装配：主题父级「\(title)」为第 \(slots.count + 1) 组，"
+                         + "超出槽位上限（\(slotCapacity)）未挂载")
+                continue
+            }
             slots.append(spec)
+            if let role { coveredSlotRoles.insert(role) }
+        }
+        // 降级兜底：主题未声明 file/edit 角色组时回装宿主默认组——系统原件已被空体
+        // 腾空、槽位是文件/编辑的唯一承载，缺失即违反协议 §5-1「保持宿主默认」/§5-3
+        for official in officialGroups {
+            guard let role = ThemeCoordinator.canonicalMenuRole(official.title),
+                  !coveredSlotRoles.contains(role) else { continue }
+            if slots.count >= slotCapacity {
+                Log.error("主题未声明文件/编辑组且回装失败：槽位已被主题组占满（\(slotCapacity)），"
+                          + "无法回装宿主默认组（协议 §5-1 承载上限冲突）")
+                continue
+            }
+            slots.append(official)
+            Log.warn("菜单装配：主题未声明\(official.title)组，回装宿主默认组（协议 §5-1/§5-3 降级兜底）")
+        }
+        // 快捷键冲突巡检（槽位 + 合并组全局查重；只 WARN 不阻断，系统按菜单焦点优先响应）
+        var combos: [String: [String]] = [:]
+        for group in slots + Array(merged.values) {
+            for item in group.items {
+                guard let key = item.key else { continue }
+                let name = shortcutDescription(key: key, modifiers: item.modifiers)
+                combos[name, default: []].append("「\(group.title)/\(item.label)」")
+            }
+        }
+        for (name, labels) in combos.sorted(by: { $0.key < $1.key }) where labels.count > 1 {
+            Log.warn("快捷键冲突巡检：\(labels.joined(separator: " / ")) 共用 \(name)（不阻断，按菜单焦点响应）")
         }
         return (slots, merged)
     }
 
+    /// 槽位容量（.commands 第二段 MenuSlot 数量；超出组 WARN 留痕不挂载）
+    static let slotCapacity = 6
+
+    /// 系统 role 项等价重建表（file/edit 槽位专用）：主题声明项命中 role → 改挂
+    /// 系统 selector 与标准快捷键（§5-1 合并条款：role 项系统语义与快捷键原样保留）
+    static let roleRebuildTable: [String: (label: String, selector: Selector, key: Character?, modifiers: EventModifiers)] = [
+        "close":      (label: "关闭窗口", selector: #selector(NSWindow.performClose(_:)), key: "w", modifiers: .command),
+        "undo":       (label: "撤销", selector: Selector(("undo:")), key: "z", modifiers: .command),
+        "redo":       (label: "重做", selector: Selector(("redo:")), key: "Z", modifiers: [.command, .shift]),
+        "cut":        (label: "剪切", selector: Selector(("cut:")), key: "x", modifiers: .command),
+        "copy":       (label: "拷贝", selector: Selector(("copy:")), key: "c", modifiers: .command),
+        "paste":      (label: "粘贴", selector: Selector(("paste:")), key: "v", modifiers: .command),
+        "select-all": (label: "全选", selector: Selector(("selectAll:")), key: "a", modifiers: .command),
+    ]
+    /// file/edit 组的系统标准 role 集（补齐判定用，顺序即呈现顺序）
+    private static let standardRolesBySlotRole: [String: [String]] = [
+        "file": ["close"],
+        "edit": ["undo", "redo", "cut", "copy", "paste", "select-all"],
+    ]
+
+    /// 快捷键组合描述（冲突巡检日志用）
+    static func shortcutDescription(key: Character, modifiers: EventModifiers) -> String {
+        var s = ""
+        if modifiers.contains(.control) { s += "⌃" }
+        if modifiers.contains(.option) { s += "⌥" }
+        if modifiers.contains(.shift) { s += "⇧" }
+        if modifiers.contains(.command) { s += "⌘" }
+        return s + String(key).uppercased()
+    }
+
     /// 单组转换（快捷键/命令 id/分隔线）；dedup 非 nil 时剔除与该系统菜单固有项
-    /// 语义重合的声明项；转换后无有效项返回 nil
+    /// 语义重合的声明项；slotRole 为 file/edit 时做 role 项级语义重建与标准项补齐；
+    /// 转换后无有效项返回 nil
     private static func convertedGroup(_ group: ThemeManifest.MenuGroup,
-                                       dedupAgainst host: (title: String, labels: Set<String>, roles: Set<String>)?) -> MenuGroupSpec? {
+                                       dedupAgainst host: (title: String, labels: Set<String>, roles: Set<String>)?,
+                                       slotRole: String? = nil) -> MenuGroupSpec? {
         guard let title = group.title, !title.isEmpty else { return nil }
+        let rebuildRoles = slotRole.flatMap { standardRolesBySlotRole[$0] }
         var items: [MenuItemSpec] = []
+        var coveredRoles = Set<String>()
         for item in group.items {
             if item.separator == true {
                 items.append(MenuItemSpec(separator: true))
@@ -180,7 +251,35 @@ final class MenuBarModel: ObservableObject {
                     Log.info("快捷键「\(item.shortcut ?? "")」（项「\(label)」）非单字符键，忽略快捷键渲染")
                 }
             }
+            // P1-2：file/edit 槽位声明项命中系统 role → 改挂系统语义（不再派发主题页）；
+            // 主题自带快捷键时保留主题快捷键，缺省补系统标准快捷键
+            if let rebuildRoles, let itemRole = canonicalItemRole(label), let rebuild = roleRebuildTable[itemRole] {
+                spec.selector = rebuild.selector
+                spec.dispatchId = nil
+                if spec.key == nil, let key = rebuild.key {
+                    spec.key = key
+                    spec.modifiers = rebuild.modifiers
+                }
+                coveredRoles.insert(itemRole)
+                Log.info("role 项等价重建：「\(title)」声明项「\(label)」同名 role 项已改挂系统语义"
+                         + "（\(itemRole)，系统剪贴板/编辑语义与快捷键原样保留），不再派发主题页")
+            }
             items.append(spec)
+        }
+        // P1-2 补齐：主题未声明的系统标准 role 项，分隔线后按宿主默认补齐重建
+        if let rebuildRoles {
+            let missing = rebuildRoles.filter { !coveredRoles.contains($0) }
+            if !missing.isEmpty {
+                items.append(MenuItemSpec(separator: true))
+                for role in missing {
+                    guard let rebuild = roleRebuildTable[role] else { continue }
+                    items.append(MenuItemSpec(label: rebuild.label, selector: rebuild.selector,
+                                              key: rebuild.key, modifiers: rebuild.modifiers))
+                }
+                Log.info("role 项等价重建：「\(title)」未声明的系统标准项（"
+                         + missing.map { roleRebuildTable[$0]?.label ?? $0 }.joined(separator: " / ")
+                         + "）已按宿主默认补齐（分隔线后）")
+            }
         }
         while items.first?.separator == true { items.removeFirst() }
         while items.last?.separator == true { items.removeLast() }
@@ -255,7 +354,10 @@ struct MenuSlotItem: View {
 
     private func fire() {
         if let selector = item.selector {
-            NSApp.sendAction(selector, to: nil, from: nil)
+            // 响应链留痕：sendAction 返回是否被响应者受理（role 项系统语义生效证据）
+            let handled = NSApp.sendAction(selector, to: nil, from: nil)
+            Log.info("菜单 role 项响应链：「\(menuTitle)/\(item.label)」\(selector)"
+                     + (handled ? " 已由响应链受理" : " 无响应者受理"))
         } else if let id = item.dispatchId, !id.isEmpty {
             ThemeCoordinator.shared.dispatchMenuCommand(menu: menuTitle, id: id)
         }

@@ -49,7 +49,7 @@ struct DSHDesktopApp: App {
 }
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate {
     /// SIGTERM/SIGINT/SIGHUP → NSApp.terminate 的信号源（必须持有防释放）
     private var signalSources: [DispatchSourceSignal] = []
     private var dragStrip: DragStripView?
@@ -286,37 +286,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             width: max(0, contentView.bounds.width - safeWidth - rightSafeWidth),
             height: rowHeight
         )
-    }
-
-    private func mainWindow() -> NSWindow? {
-        NSApp.windows.first { $0.isVisible && $0.title.hasPrefix("DSH Desktop") }
-            ?? NSApp.keyWindow
-    }
-
-    @objc private func centerWindow(_ sender: Any?) {
-        mainWindow()?.center()
-    }
-
-    @objc private func moveWindowLeft(_ sender: Any?) {
-        moveWindow(toHalf: .minX)
-    }
-
-    @objc private func moveWindowRight(_ sender: Any?) {
-        moveWindow(toHalf: .maxX)
-    }
-
-    private func moveWindow(toHalf edge: NSRectEdge) {
-        guard let window = mainWindow(), let screen = window.screen ?? NSScreen.main else { return }
-        let visible = screen.visibleFrame
-        let half = NSRect(x: edge == .minX ? visible.minX : visible.midX,
-                          y: visible.minY,
-                          width: visible.width / 2,
-                          height: visible.height)
-        window.setFrame(half, display: true, animate: true)
-    }
-
-    @objc private func toggleFullScreen(_ sender: Any?) {
-        mainWindow()?.toggleFullScreen(nil)
     }
 
     /// 关闭最后一个窗口时不退出（常驻 Dock）
