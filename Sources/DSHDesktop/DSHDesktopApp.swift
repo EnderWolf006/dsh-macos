@@ -15,23 +15,36 @@ struct DSHDesktopApp: App {
         }
         .defaultSize(width: 1280, height: 840)
         .windowStyle(.hiddenTitleBar)
+        // rev1.7.2 菜单栏 SwiftUI 数据驱动路线（AppKit 装配路线已被证伪：SwiftUI
+        // commands 重协调会修剪外来项）。单块 .commands 语句上限 10 条 → 链式三段。
+        .commands {
+            // 第一段：空体腾空系统文件/编辑菜单——从启动无条件声明、永不切换；
+            // 腾空可靠且抗 SwiftUI 重协调（menu-lab LAB4/5 顶级 dump 无系统 File/Edit）
+            CommandGroup(replacing: .newItem) { }
+            CommandGroup(replacing: .undoRedo) { }
+            CommandGroup(replacing: .pasteboard) { }
+        }
+        .commands {
+            // 第二段：6 个槽位 + 同名合并组（MenuBarModel 数据驱动，官方态/主题态统一
+            // 承载；同名合并/窗口安全阀等语义在 MenuBarModel.themeSpecs 装配时落地）
+            MenuSlot(index: 0)
+            MenuSlot(index: 1)
+            MenuSlot(index: 2)
+            MenuSlot(index: 3)
+            MenuSlot(index: 4)
+            MenuSlot(index: 5)
+            MergedMenuCommands()
+        }
+        .commands {
+            // 第三段：宿主面（服务器/通用，b1727d1 回迁改造）
+            ServerMenu()
+            CommandMenu("通用") {
+                GeneralThemeMenu()
+            }
+        }
         Settings {
             SettingsView(appState: appState, server: server)
         }
-    }
-
-    /// 原生通知（UserNotifications）：归属 DSH Desktop，
-    /// 系统设置 → 通知 里可见可管；首次发送时请求授权
-    private func sendTestNotification() async {
-        let center = UNUserNotificationCenter.current()
-        let granted = (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
-        guard granted else { return }
-        let content = UNMutableNotificationContent()
-        content.title = "DSH Desktop"
-        content.body = "原生通知通道正常 ✅"
-        try? await center.add(UNNotificationRequest(
-            identifier: UUID().uuidString, content: content, trigger: nil
-        ))
     }
 }
 
@@ -159,8 +172,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
         }
 
-        // 隐藏"文件 → 新建窗口"（AppKit 方式；不使用 SwiftUI replacing 避免菜单 bug）
-        hideNewItemIfNeeded()
+        // 「文件 → 新建窗口」无需再单独隐藏：文件菜单已整体改由槽位 CommandMenu
+        // 承载（空体腾空 .newItem 使系统文件菜单整个消失，含新建窗口），见 .commands。
     }
 
     // MARK: - 沉浸式窗口（顶到顶）
@@ -196,19 +209,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             } else {
                 removeDragStrip(from: window)
             }
-        }
-    }
-
-    // MARK: - 窗口菜单处理（AppKit 方式，避免 SwiftUI .commands 的已知菜单 bug）
-
-    /// 隐藏"文件 → 新建窗口"（原用 CommandGroup(replacing:.newItem) 实现，
-    /// 但该用法在 macOS 15.x 有已知 bug 会让菜单项随机消失，故改为 AppKit 直接操作）。
-    /// 幂等：仅在菜单存在且有该项时隐藏一次。
-    private func hideNewItemIfNeeded() {
-        guard let fileMenu = NSApp.mainMenu?.items.first(where: { $0.title == "文件" || $0.title == "File" })?.submenu else { return }
-        for item in fileMenu.items where item.action == #selector(NSDocumentController.newDocument(_:)) {
-            item.isHidden = true
-            item.isEnabled = false
         }
     }
 
