@@ -48,6 +48,17 @@ enum DesktopLayout {
 final class DragStripView: NSView {
     override var isOpaque: Bool { false }
 
+    /// 页面悬停目标是否为可交互元素（WebView 的 hover 探针经 scriptMessageHandler
+    /// 回传，主线程读写）。为 true 时拖拽带对自己的 hitTest 返回 nil，点击穿透给
+    /// 下方 webview——否则顶部 46pt 带内的页面按钮（0.1.5 侧边栏标签条的
+    /// 新建/关闭标签页等）会被拖拽带吞掉鼠标按下，点了没反应。
+    nonisolated(unsafe) static var hoverOverInteractive = false
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        if Self.hoverOverInteractive { return nil }
+        return super.hitTest(point)
+    }
+
     override func mouseDown(with event: NSEvent) {
         guard let window else {
             return

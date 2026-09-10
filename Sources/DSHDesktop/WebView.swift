@@ -24,6 +24,26 @@ struct HarnessWebView: NSViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
+    /// 拖拽带悬停探针：页面 mouseover 时回报悬停目标是否为可交互元素，
+    /// 供 DragStripView.hitTest 决定放行（可交互→穿透给 webview）或拖拽。
+    private static let dragStripHoverProbe = """
+    (function () {
+      "use strict";
+      var INTERACTIVE = "button,a,input,select,textarea,label,[role=button],[role=tab],[role=menuitem],[role=checkbox],[role=radio],[role=option],[role=combobox],[contenteditable=true]";
+      var last = null;
+      function report(interactive) {
+        if (interactive === last) return;
+        last = interactive;
+        try { window.webkit.messageHandlers.dshDragStripProbe.postMessage(interactive); } catch (e) {}
+      }
+      document.addEventListener("mouseover", function (e) {
+        var t = e.target;
+        report(!!(t && t.closest && t.closest(INTERACTIVE)));
+      }, true);
+      document.addEventListener("scroll", function () { report(false); }, true);
+    })();
+    """
+
     /// ES2025 迭代器助手垫片：官方 0.1.5 起 client 条目（sidebar-documentpreview
     /// 等）引用裸 `Iterator` 全局（Iterator.from/map/filter…），本机 WKWebView 的
     /// JavaScriptCore 尚未内建，启动图一个条目 ImportError 会阻塞整个插件加载。
@@ -112,6 +132,14 @@ struct HarnessWebView: NSViewRepresentable {
             forMainFrameOnly: true
         )
         config.userContentController.addUserScript(polyfill)
+        // 拖拽带悬停探针 + 消息回报通道
+        let hoverProbe = WKUserScript(
+            source: Self.dragStripHoverProbe,
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: true
+        )
+        config.userContentController.addUserScript(hoverProbe)
+        config.userContentController.add(DragStripProbeHandler(), name: "dshDragStripProbe")
 
         let webView = WKWebView(frame: .zero, configuration: config)
         // 沉浸式：页面背景透明（配合 fullSizeContentView 顶到顶；WKWebView 的
@@ -347,4 +375,13 @@ struct HarnessWebView: NSViewRepresentable {
             decisionHandler(.grant)
         }
     }
+
+/// 拖拽带悬停探针的消息回收：页面回报悬停目标是否可交互，DragStripView 据此
+/// 决定 hitTest 放行。不持有 webview/coordinator，无保留环。
+private final class DragStripProbeHandler: NSObject, WKScriptMessageHandler {
+    func userContentController(_ userContentController: WKUserContentController,
+                               didReceive message: WKScriptMessage) {
+        DragStripView.hoverOverInteractive = (message.body as? Bool) == true
+    }
+}
 }
