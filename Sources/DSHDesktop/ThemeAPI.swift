@@ -2,7 +2,9 @@ import Foundation
 
 // MARK: - 数据模型（协议 §4 接口面）
 
-struct ThemeInfo: Identifiable {
+/// Equatable（全字段值相等）：供 ThemeCoordinator.refreshThemes 做变化检测，
+/// 清单未变不回写 @Published（等值赋值也会触发 objectWillChange → 菜单重协调）
+struct ThemeInfo: Identifiable, Equatable {
     let id: String
     let name: String
     let version: String?

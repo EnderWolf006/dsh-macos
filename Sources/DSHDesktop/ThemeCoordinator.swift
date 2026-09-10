@@ -751,8 +751,18 @@ final class ThemeCoordinator: NSObject, ObservableObject {
     private func refreshThemes() async {
         switch await ThemeAPI.fetchThemes(base: app.url) {
         case .success(let list):
-            app.themes = list
-            app.themeSDKAvailable = true
+            // 变化检测后才发布（菜单栏 ~10s 周期闪烁缺陷的根修）：@Published 赋值
+            // 不做值比较，10s 轮询的等值回写也会发 objectWillChange → .commands 里
+            // GeneralThemeMenu 重渲染 → SwiftUI 菜单重协调把应用菜单标题重置回
+            // bundle 名（applyMenuBarAppName 巡检注释的真机实测）→ ≤1s 后巡检补写
+            // manifest.appName——首项标题一错一对，肉眼可见闪一下（生产日志每
+            // 10~11s 一条「应用菜单名已替换」的节奏即此链）。清单未变则保持静默。
+            if !app.themeSDKAvailable {
+                app.themeSDKAvailable = true
+            }
+            if app.themes != list {
+                app.themes = list
+            }
             maybeFirstInstallActivation(with: list)
         case .failure(.notFound):
             app.themeSDKAvailable = false
@@ -770,8 +780,13 @@ final class ThemeCoordinator: NSObject, ObservableObject {
         let known = UserDefaults.standard.stringArray(forKey: Self.knownThemeIDsKey) ?? []
         let ids = list.map { $0.id }
         defer {
-            UserDefaults.standard.set(ids, forKey: Self.knownThemeIDsKey)
-            UserDefaults.standard.synchronize()
+            // 快照未变化不回写：10s 轮询的等值 set+synchronize 会白打一次
+            // UserDefaults.didChangeNotification（AppDelegate 随之重放窗口增强）
+            // 并做无谓落盘（defer 内不可 return，用 if 守卫）
+            if known != ids {
+                UserDefaults.standard.set(ids, forKey: Self.knownThemeIDsKey)
+                UserDefaults.standard.synchronize()
+            }
         }
         guard known.isEmpty else { return }
         guard case .official = activeAppearance, pendingTarget == nil else {
