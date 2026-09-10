@@ -24,11 +24,94 @@ struct HarnessWebView: NSViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
+    /// ES2025 迭代器助手垫片：官方 0.1.5 起 client 条目（sidebar-documentpreview
+    /// 等）引用裸 `Iterator` 全局（Iterator.from/map/filter…），本机 WKWebView 的
+    /// JavaScriptCore 尚未内建，启动图一个条目 ImportError 会阻塞整个插件加载。
+    /// 仅在缺失时注入；已内建（未来系统）则为空操作。
+    private static let iteratorHelpersPolyfill = """
+    (function () {
+      "use strict";
+      if (typeof window.Iterator !== "undefined") return;
+      function IteratorShim() {}
+      Object.defineProperty(IteratorShim.prototype, Symbol.iterator, {
+        value: function () { return this; }, writable: true, configurable: true
+      });
+      IteratorShim.from = function (source) {
+        if (source instanceof IteratorShim) return source;
+        var it;
+        if (typeof source === "string" || (source && typeof source[Symbol.iterator] === "function")) {
+          it = source[Symbol.iterator]();
+        } else if (source && typeof source.next === "function") {
+          it = source;
+        } else {
+          throw new TypeError("Iterator.from: source is not iterable");
+        }
+        var wrapper = new IteratorShim();
+        wrapper.next = function (v) { return it.next(v); };
+        if (typeof it.return === "function") wrapper.return = function (v) { return it.return(v); };
+        if (typeof it.throw === "function") wrapper.throw = function (v) { return it.throw(v); };
+        return wrapper;
+      };
+      function helper(name, fn) {
+        Object.defineProperty(IteratorShim.prototype, name, {
+          value: fn, writable: true, configurable: true, enumerable: false
+        });
+      }
+      helper("map", function (fn) {
+        var self = IteratorShim.from(this), i = 0;
+        return IteratorShim.from((function* () { for (var v of self) yield fn(v, i++); })());
+      });
+      helper("filter", function (fn) {
+        var self = IteratorShim.from(this), i = 0;
+        return IteratorShim.from((function* () { for (var v of self) if (fn(v, i++)) yield v; })());
+      });
+      helper("take", function (n) {
+        var self = IteratorShim.from(this), remaining = Number(n) || 0;
+        return IteratorShim.from((function* () { for (var v of self) { if (remaining-- <= 0) return; yield v; } })());
+      });
+      helper("drop", function (n) {
+        var self = IteratorShim.from(this), remaining = Number(n) || 0;
+        return IteratorShim.from((function* () {
+          for (var v of self) { if (remaining > 0) { remaining--; continue; } yield v; }
+        })());
+      });
+      helper("flatMap", function (fn) {
+        var self = IteratorShim.from(this), i = 0;
+        return IteratorShim.from((function* () {
+          for (var v of self) {
+            var inner = fn(v, i++);
+            if (typeof inner === "string") { yield* inner; continue; }
+            yield* inner;
+          }
+        })());
+      });
+      helper("reduce", function (fn, initial) {
+        var acc = arguments.length > 1 ? initial : undefined, has = arguments.length > 1;
+        for (var v of this) { acc = has ? fn(acc, v) : v; has = true; }
+        return acc;
+      });
+      helper("toArray", function () { return Array.from(this); });
+      helper("some", function (fn) { for (var v of this) if (fn(v)) return true; return false; });
+      helper("every", function (fn) { for (var v of this) if (!fn(v)) return false; return true; });
+      helper("find", function (fn) { for (var v of this) if (fn(v)) return v; return undefined; });
+      // ES 模块与经典脚本共享同一全局：必须显式挂到 window，模块里的裸
+      // `Iterator` 标识符才能解析到垫片
+      window.Iterator = IteratorShim;
+    })();
+    """
+
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.applicationNameForUserAgent = "DSHDesktop/1.0"
         config.preferences.isElementFullscreenEnabled = true
         config.preferences.javaScriptCanOpenWindowsAutomatically = true
+        // 兼容垫片必须在任何页面脚本之前求值（document start / 主框架）
+        let polyfill = WKUserScript(
+            source: Self.iteratorHelpersPolyfill,
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: true
+        )
+        config.userContentController.addUserScript(polyfill)
 
         let webView = WKWebView(frame: .zero, configuration: config)
         // 沉浸式：页面背景透明（配合 fullSizeContentView 顶到顶；WKWebView 的
