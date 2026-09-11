@@ -1,5 +1,14 @@
 # 版本历史
 
+## theme-host-1.1.0-full 分支（2026-09-07~11，未发版；/Applications 已部署同源构建）
+
+主题宿主化主线（B1-B7 菜单栏 SwiftUI 数据驱动重写 + 主题面容器 + 双通道派发）+ 0.1.5-rc.2 后端兼容三修：
+
+- **菜单栏 10s 周期闪烁根修**（f02a411）：`refreshThemes` 等值回写 `@Published` 触发菜单重协调，把应用菜单首项标题重置回 bundle 名，≤1s 后巡检补写 manifest.appName——一错一对肉眼闪烁。修复：ThemeInfo 加 Equatable、清单未变整轮静默、首装快照未变不再 set+synchronize
+- **ES2025 迭代器助手垫片**（a66bd82）：0.1.5 新 client 条目（sidebar-documentpreview）引用裸 `Iterator` 全局，WKWebView JSC 未内建，单条目 ImportError 阻塞整个启动图。document-start 用户脚本注入最小垫片（from/map/filter/take/drop/flatMap/reduce/toArray/some/every/find），已内建系统空操作
+- **顶部拖拽带点击穿透**（512fbe3）：DragStripView 吞掉顶部 46pt 整带的页面点击（0.1.5 侧边栏标签条正落带内，新建/关闭标签页真鼠标无效）。hover 探针（mouseover+closest 可交互选择器→scriptMessageHandler）+ hitTest 穿透：悬停可交互元素时放行点击，其余区域照常拖拽
+- 生产后端 **0.1.5-rc.2** 活体验证：插件全量加载、设置弹窗主题行（官方 settings.general.item 插槽/锚点注入双路径）、主题菜单全链正常
+
 ## v1.0.7（2026-09-01，同日热修 09-01）
 
 0.1.2-alpha.3 兼容版（壳零改动验证）+ 退出孤儿后端修复。**同日热修**：`SemVer.compare` 补预发布细号比较（SemVer 2.0.0 规则，14 例测试）——旧版同号预发布返回 0，装 alpha.2 后检查更新永远不出现 alpha.3 安装按钮；Release 资产已替换为含修复构建：
