@@ -1,5 +1,9 @@
 # 构建
 
+> **定位声明**：社区项目，非 DeepSeek 官方出品，与官方无隶属或背书关系。完整免责声明见仓库 [README](../../README.md#免责声明)。
+>
+> 导航：[Home](Home.md) · [使用](Usage.md) · [架构](Architecture.md) · [更新](Update.md) · [FAQ](FAQ.md) · [版本历史](Changelog.md)
+
 本页说明如何从源码构建 DSH Desktop，以及分发注意事项。
 
 > 环境要求：macOS 13+、Command Line Tools（含 swiftc），无需完整 Xcode。开发机实测 macOS 15.2 / arm64。

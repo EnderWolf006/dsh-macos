@@ -1,5 +1,9 @@
 # 架构
 
+> **定位声明**：社区项目，非 DeepSeek 官方出品，与官方无隶属或背书关系。完整免责声明见仓库 [README](../../README.md#免责声明)。
+>
+> 导航：[Home](Home.md) · [使用](Usage.md) · [构建](Build.md) · [更新](Update.md) · [FAQ](FAQ.md) · [版本历史](Changelog.md)
+
 ## 项目定位
 
 DSH Desktop 是 DeepSeek Harness（`dsh`）的 macOS 社区桌面外壳，是一个「薄壳」：**不重写官方界面**，用原生 macOS 技术把官方 Web GUI 装进原生窗口，并代管 dsh 服务器进程生命周期。
@@ -13,26 +17,22 @@ DSH Desktop 是 DeepSeek Harness（`dsh`）的 macOS 社区桌面外壳，是一
 ## 分层架构
 
 ```text
-┌────────────────────────────────────────────────────────────┐
-│ ① UI 层（SwiftUI / AppKit）                                │
-│    主窗口（状态面板 ⇄ WebView，断连横幅覆盖层）              │
-│    「服务器」命令菜单 · Settings（Cmd+,）                    │
-│    AppDelegate：沉浸式标题栏 · 红绿灯锚定 · 拖拽带           │
-├────────────────────────────────────────────────────────────┤
-│ ② Web 层（WebKit）                                         │
-│    WKWebView 内嵌官方 GUI · 首次加载保护 · SPA 不打断       │
-│    导出拦截 / 弹窗接管 / 权限处理 / 断连横幅                 │
-│    desktop-layout.js：纯 CSS 布局 overlay（v3）             │
-├────────────────────────────────────────────────────────────┤
-│ ③ 进程层（ServerManager）                                  │
-│    身份探测 attach → 唯一性复查 → 六级解析链(来源绑定缓存)   │
-│    → spawn(zsh exec) → 双频健康轮询 → terminate+SIGKILL     │
-│    更新链：查询→确认→镜像拉取→校验→清缓存→停服→重启          │
-├────────────────────────────────────────────────────────────┤
-│ ④ 桥接层                                                   │
-│    dsh-desktop-bridge 插件（status / notify 路由）          │
-│    BridgeClient 轮询 · MenuBarPluginManager                │
-└────────────────────────────────────────────────────────────┘
+DSH Desktop
+├── ① UI 层（SwiftUI / AppKit）
+│     ├── 主窗口（状态面板 ⇄ WebView，断连横幅覆盖层）
+│     ├── 「服务器」命令菜单 · Settings（Cmd+,）
+│     └── AppDelegate：沉浸式标题栏 · 红绿灯锚定 · 拖拽带
+├── ② Web 层（WebKit）
+│     ├── WKWebView 内嵌官方 GUI · 首次加载保护 · SPA 不打断
+│     ├── 导出拦截 / 弹窗接管 / 权限处理 / 断连横幅
+│     └── desktop-layout.js：纯 CSS 布局 overlay（v3）
+├── ③ 进程层（ServerManager）
+│     ├── 身份探测 attach → 唯一性复查 → 六级解析链(来源绑定缓存)
+│     ├── spawn(zsh exec) → 双频健康轮询 → terminate+SIGKILL
+│     └── 更新链：查询→确认→镜像拉取→校验→清缓存→停服→重启
+└── ④ 桥接层
+      ├── dsh-desktop-bridge 插件（status / notify 路由）
+      └── BridgeClient 轮询 · MenuBarPluginManager
 ```
 
 ## 各层要点

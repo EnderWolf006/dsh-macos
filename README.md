@@ -87,10 +87,11 @@ curl -fsSL https://raw.githubusercontent.com/Farverge/DSH-MacOS/main/install.sh 
 四层薄壳架构，每一层都只做最少的事：
 
 ```text
-UI 层      SwiftUI/AppKit —— 状态面板 ⇄ WebView 切换、原生菜单、设置
-Web 层     WKWebView 内嵌官方 GUI + 纯 CSS 布局 overlay
-进程层     ServerManager —— 身份探测/唯一性保证/解析链/轮询/更新链/退出信号引导（杜绝孤儿后端）
-桥接层     dsh-desktop-bridge 插件（status / notify 路由）
+DSH Desktop（四层薄壳，各层只做最少的事）
+├── UI 层    SwiftUI/AppKit —— 状态面板 ⇄ WebView 切换、原生菜单、设置
+├── Web 层   WKWebView 内嵌官方 GUI + 纯 CSS 布局 overlay
+├── 进程层   ServerManager —— 身份探测/唯一性保证/解析链/轮询/更新链/退出信号引导（杜绝孤儿后端）
+└── 桥接层   dsh-desktop-bridge 插件（status / notify 路由）
 ```
 
 核心思路：**官方 UI 是 Cordis 插件集，装进 WebView 就能自动获得全部桌面能力**。外壳只负责三件事——把网页装进原生窗口（含导出拦截、通知、断连保护）、替用户管好 node 后端的生命周期、用纯 CSS 把官方界面的几何对齐到 macOS 窗口规范（红绿灯锚定、侧栏居中）。完整分层说明与设计决策见 Wiki。

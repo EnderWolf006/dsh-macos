@@ -1,5 +1,9 @@
 # 更新
 
+> **定位声明**：社区项目，非 DeepSeek 官方出品，与官方无隶属或背书关系。完整免责声明见仓库 [README](../../README.md#免责声明)。
+>
+> 导航：[Home](Home.md) · [使用](Usage.md) · [架构](Architecture.md) · [构建](Build.md) · [FAQ](FAQ.md) · [版本历史](Changelog.md)
+
 本应用有三个独立更新入口：后端与本体在 **设置 → 关于**，Launcher 在 **设置 → 菜单栏插件**。
 
 ---
@@ -66,10 +70,10 @@ tccutil reset Accessibility com.deepseek-ai.dsh-desktop
 
 入口：设置 → 菜单栏插件 → **检查 Launcher 更新**（v1.0.3 起与前两条链路同级的全自动安装）：
 
-1. 读取 `Farverge/DSH-Launcher` 最新 Release（tag 与 `DSH.Launcher.zip` 资产），与本地 manifest.json 版本语义比较
+1. 读取 Launcher 双发布源的最新 Release（主源 `iiiiiei/dsh-launcher` 抢先发布，镜像 `Farverge/dsh-launcher` 稳定兜底；tag 与 `DSH.Launcher.zip` 资产），与本地 manifest.json 版本语义比较
 2. 发现新版 → 确认窗（官方更新说明 + 备份策略）→ 确认后自动执行：
    - 下载 zip → 解包校验（.app 结构 + 可执行文件 + Info.plist 版本与 Release 一致）
-   - **先同步 mini-dialog 插件**到 `~/.dsh/profiles/node_modules/`（此步失败自动恢复原插件并整体中止，绝不连坐）；幂等维护 `cordis.patch.yml` 装配条目
+   - **先同步 mini-dialog 插件**到 `~/.dsh/profiles/web/node_modules/`（内层官方依赖树；此步失败自动恢复原插件并整体中止，绝不连坐）；幂等维护 `cordis.patch.yml` 装配条目
    - 退出 Launcher → 分离脚本换壳（旧包备份至 `~/Library/Application Support/DSH Backups/`，保留最近 2 份）→ 自动启动新版
 3. 无新版 / 网络失败均只提示不动作；Launcher 从未安装时提示先安装
 

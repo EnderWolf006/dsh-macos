@@ -1,5 +1,9 @@
 # 版本历史
 
+> **定位声明**：社区项目，非 DeepSeek 官方出品，与官方无隶属或背书关系。完整免责声明见仓库 [README](../../README.md#免责声明)。
+>
+> 导航：[Home](Home.md) · [使用](Usage.md) · [架构](Architecture.md) · [构建](Build.md) · [更新](Update.md) · [FAQ](FAQ.md)
+
 ## theme-host-1.1.0-full 分支（2026-09-07~11，未发版；/Applications 已部署同源构建）
 
 主题宿主化主线（B1-B7 菜单栏 SwiftUI 数据驱动重写 + 主题面容器 + 双通道派发）+ 0.1.5-rc.2 后端兼容三修：

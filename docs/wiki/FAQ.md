@@ -1,5 +1,9 @@
 # 常见问题（FAQ）
 
+> **定位声明**：社区项目，非 DeepSeek 官方出品，与官方无隶属或背书关系。完整免责声明见仓库 [README](../../README.md#免责声明)。
+>
+> 导航：[Home](Home.md) · [使用](Usage.md) · [更新](Update.md) · [架构](Architecture.md) · [构建](Build.md) · [版本历史](Changelog.md)
+
 ## 启动与服务器
 
 ### 找不到 dsh 命令 / 启动报错
