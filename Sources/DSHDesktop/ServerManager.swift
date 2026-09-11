@@ -602,7 +602,13 @@ final class ServerManager: ObservableObject {
     /// 有新版本回传版本号，没有新版回传 nil（此时不进入更新/重启流程）。
     /// v1.0.1：三级查询（官方→镜像→GitHub），回调携带稳定线+预发布线。
     func checkDSHUpdate(_ callback: @escaping @MainActor (Result<UpdateAvailability, Error>) -> Void) {
-        guard !updateLock else { return }
+        // 【吞错修复】忙时早退必须回调告知：UI 侧在调用前已置检查态并禁用按钮，
+        // 静默 return 会让回调永不触发、按钮永久卡在「检查中…」（真机"点击无反应"根因）
+        guard !updateLock else {
+            callback(.failure(NSError(domain: "update", code: 8,
+                userInfo: [NSLocalizedDescriptionKey: "已有 DSH 更新任务正在进行，请等待其完成后再检查"])))
+            return
+        }
         updateLock = true
         Task {
             let availability = await UpdateEngine.fetchAvailability()
@@ -628,7 +634,13 @@ final class ServerManager: ObservableObject {
     ///   任何一步失败都不碰服务器（继续旧的）。
     func applyDSHUpdate(distTag: String = "latest", version: String,
                         _ callback: @escaping @MainActor (Result<String, Error>) -> Void) {
-        guard !updateLock else { return }
+        // 【吞错修复】同 checkDSHUpdate：忙时早退回调失败，让 UI 复位并给出原因，
+        // 而不是静默吞掉导致按钮永久卡在「更新中…」
+        guard !updateLock else {
+            callback(.failure(NSError(domain: "update", code: 8,
+                userInfo: [NSLocalizedDescriptionKey: "已有更新或回滚任务正在进行，本次更新未开始（未做任何改动）"])))
+            return
+        }
         updateLock = true
         var snapshotManifest: UpdateSafety.Manifest?
         onUpdateProgress?(distTag == "latest"
@@ -747,7 +759,12 @@ final class ServerManager: ObservableObject {
     /// 自检失败后的一键回滚：恢复快照 → 杀后端 → 清解析缓存 → 冷启动旧版本。
     /// 回调返回恢复到的版本号；任何失败原样抛给 UI 展示。
     func rollbackFromFailedUpdate(_ callback: @escaping @MainActor (Result<String, Error>) -> Void) {
-        guard !updateLock else { return }
+        // 【吞错修复】同 checkDSHUpdate：忙时早退回调失败，UI 才能复位并交代原因
+        guard !updateLock else {
+            callback(.failure(NSError(domain: "update", code: 8,
+                userInfo: [NSLocalizedDescriptionKey: "已有更新或回滚任务正在进行，本次回滚未执行（未做任何改动）"])))
+            return
+        }
         updateLock = true
         onUpdateProgress?("── 开始回滚到更新前版本 ──")
         Task {

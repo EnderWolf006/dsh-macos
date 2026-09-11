@@ -11,6 +11,9 @@ struct SettingsView: View {
     @State private var launchError: String?
     @State private var updateMessage: String?
     @State private var isUpdatingDSH = false
+    // 检查与更新分开的忙位：检查阶段按钮显示「检查中…」而非「更新中…」，
+    // 且两级互斥（检查中不能开更新，更新中不能点检查）——用户感知的 loading 态
+    @State private var isCheckingDSH = false
     @State private var isCheckingApp = false
     @State private var updateLog: [String] = []
     @State private var showUpdateLog = false
@@ -260,15 +263,18 @@ struct SettingsView: View {
 
     /// 检查按钮（三通道候选判定后：主推走 presentBackendUpdateConfirm 独立窗）
     private var updateCheckButton: some View {
-        Button(isUpdatingDSH ? "更新中…" : "检查 DSH 更新（联网拉最新版）") {
-            guard !isUpdatingDSH else { return }
-            isUpdatingDSH = true
-            updateMessage = "正在联网检查最新 dsh…"
+        Button(isUpdatingDSH ? "更新中…"
+                : (isCheckingDSH ? "检查中…" : "检查 DSH 更新（联网拉最新版）")) {
+            guard !isCheckingDSH, !isUpdatingDSH else { return }
+            isCheckingDSH = true
+            // 三级查询（npm 官方→镜像→GitHub tags 兜底）逐级 8s 超时，最长约半分钟，
+            // 文案先给出预期，避免长等待被感知为"点击无反应"
+            updateMessage = "正在联网检查最新 dsh（npm 官方→镜像→GitHub 三级查询，最长约半分钟）…"
             server.checkDSHUpdate { result in
                 handleCheckResult(result)
             }
         }
-        .disabled(isUpdatingDSH)
+        .disabled(isCheckingDSH || isUpdatingDSH)
         .background(rollbackAlertAnchor)   // 回滚弹窗锚点改挂背景（独立 Form 行曾渲染成空行）
     }
 
@@ -283,7 +289,7 @@ struct SettingsView: View {
                 distTag: candidate.distTag,
                 channelName: candidate.channelName)
         }
-        .disabled(isUpdatingDSH)
+        .disabled(isCheckingDSH || isUpdatingDSH)
     }
 
     /// 回滚弹窗（锚定在隐藏视图上，与其它弹窗互不嵌套）
@@ -319,7 +325,7 @@ struct SettingsView: View {
     /// · 双方时间都已知且候选不晚于本机 → 丢弃（防旧版/同版本重发误报）；
     /// · 候选发布时间全未知 → 主推退回 SemVer 最大者。
     private func handleCheckResult(_ result: Result<UpdateAvailability, Error>) {
-        isUpdatingDSH = false
+        isCheckingDSH = false
         pendingAlternatives = []
         switch result {
         case .success(let availability):
@@ -349,7 +355,10 @@ struct SettingsView: View {
             return publishedAt > currentTime
         }
         guard !candidates.isEmpty else {
-            updateMessage = "DSH 已是最新版本（\(availability.source.rawValue)）"
+            // 明确交代"新在哪/旧在哪"：已是最新时把本机版本号一并给出（版本未解析时注明）
+            updateMessage = current.isEmpty
+                ? "DSH 已是最新版本（本机版本未解析，来源：\(availability.source.rawValue)）"
+                : "DSH 已是最新版本：v\(current)（来源：\(availability.source.rawValue)）"
             return
         }
         let sorted = sortCandidates(candidates)
