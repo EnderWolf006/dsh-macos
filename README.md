@@ -23,21 +23,11 @@
 
 ## 一键安装
 
-打开终端，复制粘贴以下命令（两个发布源任选其一）：
-
-**抢先源（iiiiiei，第一时间获取最新版）：**
+打开终端，复制粘贴以下命令：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/iiiiiei/dsh-macos/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/EnderWolf006/dsh-macos/main/install.sh | bash
 ```
-
-**稳定镜像源（Farverge，可能与抢先源存在同步延迟）：**
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Farverge/DSH-MacOS/main/install.sh | bash
-```
-
-> 注：iiiiiei 个人仓为抢先发布源，第一时间获取最新版；Farverge 组织仓为面向用户的稳定镜像（Actions 自动同步 main 分支与 Wiki，Release 不参与同步），其版本可能滞后于抢先源。两源安装脚本一致，按需任选。
 
 也可以**复制这段命令发给你正在使用的 AI agent**，它会自动完成安装部署并处理过程中的所有提示。
 
@@ -47,14 +37,10 @@ curl -fsSL https://raw.githubusercontent.com/Farverge/DSH-MacOS/main/install.sh 
 2. **下载安装**——从 Releases 拉取最新版，温和退出运行中的旧实例后替换升级
 3. **状态回馈**——自动启动应用，探测后端就绪状态，末尾输出 `KEY=VALUE` 摘要行（供 agent 直接解析）
 
-另有**只读体检模式**，随时给本机做一套应用体检（报告同样可发给 agent 自动处理），同样双源任选：
+另有**只读体检模式**，随时给本机做一套应用体检（报告同样可发给 agent 自动处理）：
 
 ```bash
-# 抢先源（iiiiiei，第一时间获取最新版）
-curl -fsSL https://raw.githubusercontent.com/iiiiiei/dsh-macos/main/install.sh | bash -s -- doctor
-
-# 稳定镜像源（Farverge，可能与抢先源存在同步延迟）
-curl -fsSL https://raw.githubusercontent.com/Farverge/DSH-MacOS/main/install.sh | bash -s -- doctor
+curl -fsSL https://raw.githubusercontent.com/EnderWolf006/dsh-macos/main/install.sh | bash -s -- doctor
 ```
 
 体检覆盖：系统版本、应用安装与签名、Node.js、3080 端口身份与健康、桥接接口、npx 缓存副本数、失效解析缓存。追加 `--fix` 可执行白名单内的安全修复（如清理失效缓存）。

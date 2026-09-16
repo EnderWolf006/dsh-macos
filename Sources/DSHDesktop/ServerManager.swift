@@ -241,11 +241,21 @@ final class ServerManager: ObservableObject {
             Task { @MainActor in
                 guard let self else { return }
                 if self.serverProcess === proc {
+                    self.pollTask?.cancel()
+                    self.pollTask = nil
                     self.outputPipe?.fileHandleForReading.readabilityHandler = nil
                     self.outputPipe = nil
                     self.serverProcess = nil
-                    if self.status != .starting {
+                    if self.stopping {
                         self.status = .stopped
+                    } else if case .error = self.status {
+                        // 启动超时等路径已经提供了更准确的原因，保留原错误。
+                    } else {
+                        let code = proc.terminationStatus
+                        let reason = "服务器进程已退出（状态码 \(code)）"
+                        self.appState.pageLoaded = false
+                        self.status = .error(reason)
+                        Log.warn(reason)
                     }
                 }
             }
@@ -878,6 +888,7 @@ final class ServerManager: ObservableObject {
         pollTask = Task { [weak self] in
             guard let self else { return }
             var consecutiveFailures = 0
+            let startupDeadline = Date().addingTimeInterval(30)
             while !Task.isCancelled {
                 // 服务器已停止（手动 stop / 进程退出）：结束轮询，避免空转
                 if self.status == .stopped { break }
@@ -890,6 +901,16 @@ final class ServerManager: ObservableObject {
                     try? await Task.sleep(for: .seconds(5))
                 } else {
                     consecutiveFailures += 1
+                    if self.status == .starting, Date() >= startupDeadline {
+                        let message = "服务器启动超时（30 秒内未监听 127.0.0.1:\(AppState.defaultPort)）"
+                        self.appState.pageLoaded = false
+                        self.status = .error(message)
+                        Log.warn(message)
+                        if let process = self.serverProcess, process.isRunning {
+                            process.terminate()
+                        }
+                        break
+                    }
                     if self.status == .running && consecutiveFailures >= 2 {
                         self.status = .error("与服务器的连接中断")
                     }
@@ -970,4 +991,3 @@ enum ServerError: LocalizedError {
         }
     }
 }
-

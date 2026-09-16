@@ -2,17 +2,17 @@
 # DSH Desktop 一键安装 / 体检脚本
 #
 # 用法：
-#   curl -fsSL https://raw.githubusercontent.com/iiiiiei/dsh-macos/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/EnderWolf006/dsh-macos/main/install.sh | bash
 #       三段式：① 环境预检 ② 下载安装 ③ 状态回馈
 #
-#   curl -fsSL https://raw.githubusercontent.com/iiiiiei/dsh-macos/main/install.sh | bash -s -- doctor
+#   curl -fsSL https://raw.githubusercontent.com/EnderWolf006/dsh-macos/main/install.sh | bash -s -- doctor
 #       只读体检：逐项检查本地环境与应用运行状态，输出人读报告 + KEY=VALUE 行（供 agent 解析）。
 #       追加 --fix 可执行白名单内的安全修复（当前仅：清理失效的命令解析缓存）。
 #
 # 说明：curl 下载的文件不带隔离标记，Gatekeeper 不介入，无需任何签名证书。
 set -euo pipefail
 
-REPO="iiiiiei/dsh-macos"
+REPO="EnderWolf006/dsh-macos"
 APP_NAME="DSH Desktop.app"
 BUNDLE_ID="com.deepseek-ai.dsh-desktop"
 ASSET="DSH.MacOS.Desktop.zip"   # GitHub 会把资产名空格归一化为点号，直接用点号命名
@@ -95,7 +95,7 @@ do_install() {
   echo "── ② 下载与安装 ────────────────────────────"
   local url="${BASE_URL}/releases/latest/download/${ASSET}"
   echo " → ${url}"
-  curl -fSL --progress-bar -o "${TMP}/${ASSET}" "$URL"
+  curl -fSL --progress-bar -o "${TMP}/${ASSET}" "$url"
   unzip -q -o "${TMP}/${ASSET}" -d "$TMP"
   [ -d "${TMP}/${APP_NAME}" ] || {
     echo " ${FAIL} 资产包结构不符合预期，请到 ${BASE_URL}/releases 手动下载"; exit 1; }
