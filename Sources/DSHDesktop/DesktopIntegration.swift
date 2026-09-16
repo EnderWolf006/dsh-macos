@@ -12,12 +12,9 @@ final class DesktopIntegration: NSObject, ObservableObject, WKScriptMessageHandl
     @Published var zoom = UserDefaults.standard.object(forKey: "desktopZoom") as? Double ?? 1.0
     @Published var syncError: String?
     private let views = NSHashTable<WKWebView>.weakObjects()
-    private var tray: NSStatusItem?
     private var keyMonitor: Any?
-    private var trayMouseMonitor: Any?
     private var menuObserver: NSObjectProtocol?
     private var started = false
-    private var trayMenu: NSMenu?
 
     func text(_ zh: String, _ en: String) -> String { language == "zh" ? zh : en }
     func localized(_ key: String) -> String {
@@ -42,7 +39,6 @@ final class DesktopIntegration: NSObject, ObservableObject, WKScriptMessageHandl
         if kind == "language", let value = body["value"], ["zh", "en"].contains(value) {
             language = value
             UserDefaults.standard.set(value, forKey: "desktopLanguage")
-            rebuildTray()
             return
         }
         if kind == "completion" {
@@ -72,7 +68,6 @@ final class DesktopIntegration: NSObject, ObservableObject, WKScriptMessageHandl
                 self.syncError = nil
                 self.language = value
                 UserDefaults.standard.set(value, forKey: "desktopLanguage")
-                self.rebuildTray()
             }
         }
     }
@@ -99,27 +94,6 @@ final class DesktopIntegration: NSObject, ObservableObject, WKScriptMessageHandl
     func start() {
         guard !started else { return }
         started = true
-        tray = NSStatusBar.system.statusItem(withLength: 24)
-        if let url = Bundle.main.url(forResource: "whale-icon", withExtension: "png"),
-           let image = NSImage(contentsOf: url) {
-            image.size = NSSize(width: 22, height: 22)
-            image.isTemplate = true
-            tray?.button?.image = image
-        } else {
-            tray?.button?.image = NSImage(systemSymbolName: "terminal", accessibilityDescription: "DSH Desktop")
-        }
-        tray?.button?.toolTip = "DSH Desktop"
-        tray?.button?.target = self
-        tray?.button?.action = #selector(show)
-        tray?.button?.sendAction(on: [.leftMouseUp])
-        rebuildTray()
-        trayMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: .rightMouseDown) { [weak self] event in
-            guard let self, let button = self.tray?.button, let window = button.window,
-                  event.window === window,
-                  button.bounds.contains(button.convert(event.locationInWindow, from: nil)) else { return event }
-            self.trayMenu?.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.height), in: button)
-            return nil
-        }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             let key = event.charactersIgnoringModifiers?.lowercased()
@@ -147,30 +121,6 @@ final class DesktopIntegration: NSObject, ObservableObject, WKScriptMessageHandl
         defaults.set(permissionNotifications, forKey: "permissionNotifications")
         defaults.set(questionNotifications, forKey: "questionNotifications")
     }
-    private func rebuildTray() {
-        let menu = NSMenu()
-        for (title, action) in [(text("显示 DSH", "Show DSH"), #selector(show)), (text("设置…", "Settings…"), #selector(settings)), (text("退出 DSH", "Quit DSH"), #selector(quit))] {
-            let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
-            item.target = self
-            menu.addItem(item)
-        }
-        trayMenu = menu
-    }
-    @objc private func show() {
-        NSApp.activate(ignoringOtherApps: true)
-        NSApp.windows.first(where: { $0.title.hasPrefix("DSH Desktop") })?.makeKeyAndOrderFront(nil)
-    }
-    @objc private func settings() {
-        NSApp.activate(ignoringOtherApps: true)
-        DispatchQueue.main.async {
-            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-            DispatchQueue.main.async {
-                NSApp.windows.first(where: { $0.identifier?.rawValue == "com_apple_SwiftUI_Settings_window" || $0.title == self.text("DSH Desktop 设置", "DSH Desktop Settings") })?.makeKeyAndOrderFront(nil)
-                NSApp.activate(ignoringOtherApps: true)
-            }
-        }
-    }
-    @objc private func quit() { NSApp.terminate(nil) }
 }
 
 struct DesktopPreferences: View {

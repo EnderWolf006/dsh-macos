@@ -44,7 +44,6 @@ curl -fsSL https://raw.githubusercontent.com/EnderWolf006/dsh-macos/main/install
 - 关闭窗口 ≠ 退出（Dock 常驻），Cmd+Q 才是真正退出
 - 连接中断时页面顶部出现横幅并自动重试，内容不丢；恢复即消失
 - 折叠侧栏、拖拽带双击最大化等桌面行为与系统一致
-- 菜单栏鲸鱼图标可显示主窗口、打开设置或退出，无需单独安装 Launcher
 - 编辑菜单支持 `Ctrl+F` 查找，`Command +` / `Command -` / `Command 0` 控制全局缩放
 
 ## 6. 设置（Cmd+,)

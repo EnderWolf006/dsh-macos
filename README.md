@@ -65,7 +65,7 @@ curl -fsSL https://raw.githubusercontent.com/EnderWolf006/dsh-macos/main/install
 - **认证链自动适配**：0.1.2-alpha 后端的浏览器认证链（launch token + 签名 Cookie）全自动换发，断连重连同样覆盖
 - **应用自更新**：应用本体检查 GitHub Releases，下载校验后自动换壳重启，旧版本备份可回退
 - **中英文同步**：桌面壳与 DSH 内部语言双向同步，设置、菜单和服务状态随语言即时切换
-- **内置菜单栏托盘与通知**：无需额外 Launcher，菜单栏可直接显示主窗口、打开设置或退出；回合完成通知默认仅在应用失焦时显示，权限与提问通知可独立开关
+- **原生通知**：回合完成通知默认仅在应用失焦时显示，权限与提问通知可独立开关
 - **原生效率操作**：编辑菜单支持 `Ctrl+F` 页面查找，并可用 `Command +`、`Command -`、`Command 0` 全局缩放
 - **dsh-plugin-norm 协议层（可选生态组件）**：对外屏蔽官方版本漂移——家族插件只依赖其稳定面（caps 体检 / 会话跳转 / 事件通道），官方迭代适配收敛到一处。独立选装（仓库 [iiiiiei/dsh-plugin-norm](https://github.com/iiiiiei/dsh-plugin-norm)），与 Launcher 分属两个独立仓库、分开选装，一键安装不附带；mini-dialog 0.2.1+ 的会话跳转依赖它（norm ≥ 1.0.1）
 - **桥接插件**：向系统注入服务器状态接口（pid / 版本 / 运行时长），并为插件生态预留原生通知通道
