@@ -103,6 +103,7 @@ final class ThemeWebView: WKWebView {
         let broker = ThemeReadyBroker()
         config.userContentController.add(broker, name: Self.themeReadyHandlerName)
         super.init(frame: .zero, configuration: config)
+        DesktopIntegration.shared.register(self)
         broker.target = self
         navigationDelegate = self
         uiDelegate = self

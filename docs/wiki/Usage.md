@@ -15,18 +15,18 @@
 **抢先源（iiiiiei，第一时间获取最新版）：**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/iiiiiei/dsh-macos/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/EnderWolf006/dsh-macos/main/install.sh | bash
 ```
 
 **稳定镜像源（Farverge，可能与抢先源存在同步延迟）：**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Farverge/DSH-MacOS/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/EnderWolf006/dsh-macos/main/install.sh | bash
 ```
 
 > 注：抢先源第一时间获取最新版；稳定镜像源版本可能滞后于抢先源（两源差异详见 README「一键安装」）。
 
-手动方式：到 Releases 下载 `DSH.MacOS.Desktop.zip`（[抢先源](https://github.com/iiiiiei/dsh-macos/releases) · [稳定镜像](https://github.com/Farverge/DSH-MacOS/releases)），解压后把 `DSH Desktop.app` 拖入 /Applications。
+手动方式：到 [EnderWolf006/dsh-macos Releases](https://github.com/EnderWolf006/dsh-macos/releases) 下载 `DSH.MacOS.Desktop.zip`，解压后把 `DSH Desktop.app` 拖入 /Applications。
 
 前提：**macOS 13+**、已安装 **Node.js**（终端 `node -v` 有输出）。应用启动时会自动拉起 dsh 后端。
 

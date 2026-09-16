@@ -6,6 +6,7 @@ import ServiceManagement
 struct SettingsView: View {
     @ObservedObject var appState: AppState
     @ObservedObject var server: ServerManager
+    @ObservedObject private var desktop = DesktopIntegration.shared
 
     @State private var launchAtLogin = false
     @State private var launchError: String?
@@ -50,6 +51,7 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
+            DesktopPreferences()
             Section("服务器") {
                 // 端口由 DSH 后端固定监听，只读展示，避免误改导致连不上后端
                 LabeledContent("端口", value: "\(AppState.defaultPort)")
@@ -77,64 +79,13 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
-            // —— 菜单栏插件（可选装；未安装则整栏不出现）——
-            if let plugin = MenuBarPluginManager.shared.manifest {
-                Section("菜单栏插件") {
-                    LabeledContent("插件", value: plugin.name)
-                    LabeledContent("版本", value: plugin.version)
-                    if let summary = plugin.summary, !summary.isEmpty {
-                        Text(summary)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    if let bundleID = plugin.bundleID {
-                        Toggle("启用（菜单栏常驻）", isOn: Binding(
-                            get: { pluginRunning },
-                            set: { on in
-                                pluginRunning = on
-                                if on {
-                                    MenuBarPluginManager.shared.launchPlugin(bundleID)
-                                } else {
-                                    MenuBarPluginManager.shared.quitPlugin(bundleID)
-                                }
-                            }
-                        ))
-                    }
-                    // 卡3 定稿：Launcher 的版本源 = iiiiiei/dsh-launcher 的 Release
-                    // （与主应用的"检查 DSH 更新"是两条独立链路，不共用版本源）
-                    // 真机 R2：分组表单给每个按钮各分配一行，相邻也留空——两个按钮
-                    // 并排进同一 HStack，空白行从结构上消失
-                    HStack(spacing: 12) {
-                        Button("重新检测插件") {
-                            MenuBarPluginManager.shared.refresh()
-                            syncPluginState()
-                        }
-                        Button(isCheckingLauncher ? "检查中…" : "检查 Launcher 更新") {
-                            guard !isCheckingLauncher, !isUpdatingLauncher else { return }
-                            isCheckingLauncher = true
-                            launcherUpdateMessage = "正在联网检查两个发布源（\(LauncherSelfUpdater.primaryRepo) / \(LauncherSelfUpdater.mirrorRepo)）的最新 Release…"
-                            Task { @MainActor in
-                                defer { isCheckingLauncher = false }
-                                launcherUpdateMessage = await checkLauncherUpdate(
-                                    currentVersion: launcherLocalVersion())
-                            }
-                        }
-                        .disabled(isCheckingLauncher || isUpdatingLauncher)
-                    }
-                    if let launcherUpdateMessage {
-                        Text(launcherUpdateMessage)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
-                    }
-                }
-                .onAppear { syncPluginState() }
-            }
-
             Section("状态") {
                 LabeledContent("服务器状态", value: server.status.label)
                 LabeledContent("连接地址", value: appState.url.absoluteString)
-                LabeledContent("桥接插件（dsh-desktop-bridge）", value: appState.bridgeConnected ? "已连接" : "未检测到")
+                LabeledContent("桥接插件（dsh-desktop-bridge）",
+                               value: appState.bridgeConnected
+                                   ? desktop.text("已连接", "Connected")
+                                   : desktop.text("未检测到", "Not detected"))
                 if appState.bridgeConnected, !appState.bridgeDetail.isEmpty {
                     // 明细非 @Published：打开设置页时读到的是最新轮询值，
                     // 页面停留期间不逐秒刷新（见 AppState.bridgeDetail 注释）
@@ -148,7 +99,9 @@ struct SettingsView: View {
 
             Section("关于") {
                 LabeledContent("DSH Desktop", value: appVersion)
-                LabeledContent("DSH 版本", value: server.currentDSHVersion ?? "待服务器启动后显示")
+                LabeledContent("DSH 版本",
+                               value: server.currentDSHVersion
+                                   ?? desktop.text("待服务器启动后显示", "Available after the server starts"))
                 LabeledContent("最低系统", value: "macOS 13+")
                 dshUpdateControls
                 Button(isUpdatingApp ? "应用更新中…" : (isCheckingApp ? "检查中…" : "检查应用更新")) {
@@ -157,7 +110,7 @@ struct SettingsView: View {
                     updateMessage = "正在检查两个发布源的最新版本…"
                     Task { @MainActor in
                         defer { isCheckingApp = false }
-                        // 双发布源：主源（iiiiiei）= 抢先发布；镜像源（Farverge）= Actions
+                        // 双发布源：主源（EnderWolf006）= 抢先发布；镜像源（Farverge）= Actions
                         // 自动同步的稳定镜像，存在分钟级延迟。先主后镜，两源都失败才报
                         // 「无法检查」——只要还有一个源活着，检查就有结果可用。
                         let primary = await AppSelfUpdater.fetchLatestRelease()
@@ -209,9 +162,6 @@ struct SettingsView: View {
         .frame(width: 480)
         .onAppear {
             launchAtLogin = isLaunchAtLoginEnabled()
-            // 打开设置时读一次插件目录（无后台任务）
-            MenuBarPluginManager.shared.refresh()
-            syncPluginState()
         }
         .onDisappear {
             appState.saveSettings()

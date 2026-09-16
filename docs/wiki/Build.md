@@ -47,7 +47,7 @@ codesign --force --deep -s - \
 推荐主线是一键安装脚本（脚本位于仓库根 `install.sh`）：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Farverge/DSH-MacOS/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/EnderWolf006/dsh-macos/main/install.sh | bash
 ```
 
 原理与约定：

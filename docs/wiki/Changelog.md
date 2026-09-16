@@ -4,6 +4,15 @@
 >
 > 导航：[Home](Home.md) · [使用](Usage.md) · [架构](Architecture.md) · [构建](Build.md) · [更新](Update.md) · [FAQ](FAQ.md)
 
+## v1.2.0（2026-09-16）
+
+- 中英文界面支持，并与 DSH 内部语言设置双向同步
+- 内置菜单栏托盘，无需额外安装 Launcher
+- 新增回合完成、权限与提问通知设置；回合完成默认仅在应用失焦时通知
+- 编辑菜单新增 `Ctrl+F` 查找，以及 `Command +` / `Command -` / `Command 0` 全局缩放
+- 移除文件、显示、通用顶级菜单，简化桌面菜单结构
+- 一键安装和文档入口统一使用 `EnderWolf006/dsh-macos`，并回归验证 GUI 二次启动
+
 ## theme-host-1.1.0-full 分支（2026-09-07~11，未发版；/Applications 已部署同源构建）
 
 主题宿主化主线（B1-B7 菜单栏 SwiftUI 数据驱动重写 + 主题面容器 + 双通道派发）+ 0.1.5-rc.2 后端兼容三修：

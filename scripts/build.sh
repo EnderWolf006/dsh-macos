@@ -48,6 +48,7 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/DSHDesktop"
 cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
+cp -R "$ROOT/Resources/en.lproj" "$APP/Contents/Resources/"
 
 echo "==> [3/4] generate icon (官方鲸鱼 logo)"
 ICONSET="$ROOT/.build/AppIcon.iconset"

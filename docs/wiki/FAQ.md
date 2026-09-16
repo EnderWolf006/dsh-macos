@@ -42,7 +42,7 @@ kill <PID>
 
 ### 一键安装命令是什么
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Farverge/DSH-MacOS/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/EnderWolf006/dsh-macos/main/install.sh | bash
 ```
 curl 安装不带隔离标记，无 Gatekeeper 拦截。浏览器下载 zip 的用户如遇"已损坏"，可移除隔离属性后再打开。
 

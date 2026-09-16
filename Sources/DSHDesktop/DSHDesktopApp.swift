@@ -8,10 +8,12 @@ struct DSHDesktopApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var appState = AppState.shared
     @StateObject private var server = ServerManager.shared
+    @StateObject private var desktop = DesktopIntegration.shared
 
     var body: some Scene {
         WindowGroup("DSH Desktop", id: "main") {
             ContentView(appState: appState, server: server)
+                .environment(\.locale, Locale(identifier: desktop.language))
         }
         .defaultSize(width: 1280, height: 840)
         .windowStyle(.hiddenTitleBar)
@@ -38,12 +40,10 @@ struct DSHDesktopApp: App {
         .commands {
             // 第三段：宿主面（服务器/通用，b1727d1 回迁改造）
             ServerMenu()
-            CommandMenu("通用") {
-                GeneralThemeMenu()
-            }
         }
         Settings {
             SettingsView(appState: appState, server: server)
+                .environment(\.locale, Locale(identifier: desktop.language))
         }
     }
 }
@@ -96,6 +96,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // 握手看门狗（B2）由 ThemeWebView 承载、ThemeCoordinator 消费回调。
         // 主题 WebView 渲染进程崩溃经其委托自报协调器回退 official（§6-5）。
         ThemeCoordinator.shared.launch()
+        DesktopIntegration.shared.start()
 
         // 沉浸式窗口：等主窗口出现后设置透明标题栏 + 内容延伸（红绿灯悬浮、内容顶到顶）。
         // 受「沉浸式标题栏」开关控制（默认开，关闭后回到系统标准标题栏）。

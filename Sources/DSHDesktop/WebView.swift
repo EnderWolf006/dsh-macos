@@ -122,6 +122,7 @@ struct HarnessWebView: NSViewRepresentable {
 
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
+        DesktopIntegration.shared.configure(config)
         config.applicationNameForUserAgent = "DSHDesktop/1.0"
         config.preferences.isElementFullscreenEnabled = true
         config.preferences.javaScriptCanOpenWindowsAutomatically = true
@@ -142,6 +143,7 @@ struct HarnessWebView: NSViewRepresentable {
         config.userContentController.add(DragStripProbeHandler(), name: "dshDragStripProbe")
 
         let webView = WKWebView(frame: .zero, configuration: config)
+        DesktopIntegration.shared.register(webView)
         // 沉浸式：页面背景透明（配合 fullSizeContentView 顶到顶；WKWebView 的
         // isOpaque 只读，透明由 underPageBackgroundColor 提供）
         webView.underPageBackgroundColor = .clear

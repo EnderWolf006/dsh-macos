@@ -11,13 +11,13 @@
 **抢先源（iiiiiei，第一时间获取最新版）：**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/iiiiiei/dsh-macos/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/EnderWolf006/dsh-macos/main/install.sh | bash
 ```
 
 **稳定镜像源（Farverge，可能与抢先源存在同步延迟）：**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Farverge/DSH-MacOS/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/EnderWolf006/dsh-macos/main/install.sh | bash
 ```
 
 > 注：iiiiiei 个人仓为抢先发布源，第一时间获取最新版；Farverge 组织仓为面向用户的稳定镜像（Actions 自动同步 main 分支与 Wiki，Release 不参与同步），其版本可能滞后于抢先源。两源安装脚本一致，按需任选。

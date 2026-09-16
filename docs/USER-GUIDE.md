@@ -1,6 +1,6 @@
 # DSH Desktop 使用说明书
 
-**版本**：v1.0.0 · 适用 macOS 13+
+**版本**：v1.2.0 · 适用 macOS 13+
 
 > **免责声明**：DSH Desktop 是独立的社区开源项目，**并非 DeepSeek 官方出品**，与 DeepSeek 及其关联方无任何隶属、合作或背书关系；相关名称与标识的权利归其权利人所有。本软件按"现状"提供，不含任何明示或默示担保，使用产生的全部风险由使用者自行承担。完整免责声明见仓库 [README](../README.md#免责声明)。
 
@@ -21,7 +21,7 @@
 ## 3. 安装
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Farverge/DSH-MacOS/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/EnderWolf006/dsh-macos/main/install.sh | bash
 ```
 
 或从 Releases 下载 `DSH.MacOS.Desktop.zip`，把 `DSH Desktop.app` 拖入应用程序文件夹。
@@ -44,6 +44,8 @@ curl -fsSL https://raw.githubusercontent.com/Farverge/DSH-MacOS/main/install.sh 
 - 关闭窗口 ≠ 退出（Dock 常驻），Cmd+Q 才是真正退出
 - 连接中断时页面顶部出现横幅并自动重试，内容不丢；恢复即消失
 - 折叠侧栏、拖拽带双击最大化等桌面行为与系统一致
+- 菜单栏鲸鱼图标可显示主窗口、打开设置或退出，无需单独安装 Launcher
+- 编辑菜单支持 `Ctrl+F` 查找，`Command +` / `Command -` / `Command 0` 控制全局缩放
 
 ## 6. 设置（Cmd+,)
 
@@ -54,6 +56,9 @@ curl -fsSL https://raw.githubusercontent.com/Farverge/DSH-MacOS/main/install.sh 
 | 自动启动服务器 | 开 | 打开应用即拉起 |
 | 退出保持服务器 | 关 | 默认退出带走后端 |
 | 开机自启 | 关 | 需在 /Applications |
+| 语言 | 跟随当前 DSH 设置 | 中文 / English 双向同步 |
+| 回合完成通知 | 仅在失焦时 | 可改为从不或始终 |
+| 权限 / 提问通知 | 开 | 可分别关闭 |
 
 状态区可查看服务器状态、桥接信息（pid / 版本 / 运行时长）；关于区可检查 DSH 更新与应用更新。
 

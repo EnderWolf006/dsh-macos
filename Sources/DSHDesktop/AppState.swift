@@ -11,13 +11,13 @@ enum ServerStatus: Equatable {
     case running
     case error(String)
 
-    var label: String {
+    @MainActor var label: String {
         switch self {
-        case .unknown: return "检测中…"
-        case .stopped: return "已停止"
-        case .starting: return "启动中…"
-        case .running: return "运行中"
-        case .error(let message): return "错误：\(message)"
+        case .unknown: return DesktopIntegration.shared.text("检测中…", "Checking…")
+        case .stopped: return DesktopIntegration.shared.text("已停止", "Stopped")
+        case .starting: return DesktopIntegration.shared.text("启动中…", "Starting…")
+        case .running: return DesktopIntegration.shared.text("运行中", "Running")
+        case .error(let message): return DesktopIntegration.shared.text("错误：\(message)", "Error: \(message)")
         }
     }
 

@@ -324,12 +324,24 @@ final class MenuBarModel: ObservableObject {
 struct MenuSlot: Commands {
     let index: Int
     @ObservedObject private var model = MenuBarModel.shared
+    @ObservedObject private var desktop = DesktopIntegration.shared
 
     var body: some Commands {
-        if model.groups.count > index {
-            CommandMenu(model.groups[index].title) {
+        if model.groups.count > index, !["文件", "File", "显示", "View", "通用", "General"].contains(model.groups[index].title) {
+            CommandMenu(desktop.localized(model.groups[index].title)) {
                 ForEach(Array(model.groups[index].items.enumerated()), id: \.offset) { _, item in
                     MenuSlotItem(item: item, menuTitle: model.groups[index].title)
+                }
+                if ["编辑", "Edit"].contains(model.groups[index].title) {
+                    Divider()
+                    Button(desktop.text("查找…", "Find…")) { desktop.find() }
+                        .keyboardShortcut("f", modifiers: .control)
+                    Button(desktop.text("放大", "Zoom In")) { desktop.changeZoom(0.1) }
+                        .keyboardShortcut("+", modifiers: .command)
+                    Button(desktop.text("缩小", "Zoom Out")) { desktop.changeZoom(-0.1) }
+                        .keyboardShortcut("-", modifiers: .command)
+                    Button(desktop.text("实际大小", "Actual Size")) { desktop.changeZoom(1 - desktop.zoom) }
+                        .keyboardShortcut("0", modifiers: .command)
                 }
             }
         }
@@ -338,6 +350,7 @@ struct MenuSlot: Commands {
 
 /// 槽位项：分隔线 / role 项（响应链等价重建）/ 主题命令项（下行派发）
 struct MenuSlotItem: View {
+    @ObservedObject private var desktop = DesktopIntegration.shared
     let item: MenuItemSpec
     let menuTitle: String
 
@@ -345,10 +358,10 @@ struct MenuSlotItem: View {
         if item.separator {
             Divider()
         } else if let key = item.key {
-            Button(item.label) { fire() }
+            Button(desktop.localized(item.label)) { fire() }
                 .keyboardShortcut(KeyEquivalent(key), modifiers: item.modifiers)
         } else {
-            Button(item.label) { fire() }
+            Button(desktop.localized(item.label)) { fire() }
         }
     }
 
@@ -395,11 +408,14 @@ struct MergedMenuCommands: Commands {
 /// 「服务器」菜单：动态启停标题随 server.status（serverProcess 是 @Published，
 /// attach 完成后菜单自动刷新）
 struct ServerMenu: Commands {
+    @ObservedObject private var desktop = DesktopIntegration.shared
     @ObservedObject private var server = ServerManager.shared
 
     var body: some Commands {
-        CommandMenu("服务器") {
-            Button(server.status == .running ? "停止服务器" : "启动服务器") {
+        CommandMenu(desktop.text("服务器", "Server")) {
+            Button(server.status == .running
+                   ? desktop.text("停止服务器", "Stop server")
+                   : desktop.text("启动服务器", "Start server")) {
                 if server.status == .running {
                     server.stop()
                 } else {
@@ -413,16 +429,16 @@ struct ServerMenu: Commands {
 
             Divider()
 
-            Button("刷新页面") { refreshSurface() }
-            Button("显示主窗口") { showMainWindow() }
-            Button("在浏览器中打开") { NSWorkspace.shared.open(AppState.shared.url) }
-            Button("前往开放平台") {
+            Button(desktop.text("刷新页面", "Reload page")) { refreshSurface() }
+            Button(desktop.text("显示主窗口", "Show main window")) { showMainWindow() }
+            Button(desktop.text("在浏览器中打开", "Open in browser")) { NSWorkspace.shared.open(AppState.shared.url) }
+            Button(desktop.text("前往开放平台", "Open API platform")) {
                 if let url = URL(string: "https://platform.deepseek.com/") { NSWorkspace.shared.open(url) }
             }
 
             Divider()
 
-            Button("发送测试通知") {
+            Button(desktop.text("发送测试通知", "Send test notification")) {
                 Task { await sendTestNotification() }
             }
         }
@@ -452,7 +468,7 @@ struct ServerMenu: Commands {
         guard granted else { return }
         let content = UNMutableNotificationContent()
         content.title = "DSH Desktop"
-        content.body = "原生通知通道正常 ✅"
+        content.body = desktop.text("原生通知通道正常", "Native notifications are working")
         try? await center.add(UNNotificationRequest(
             identifier: UUID().uuidString, content: content, trigger: nil
         ))
