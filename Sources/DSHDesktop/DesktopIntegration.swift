@@ -14,8 +14,10 @@ final class DesktopIntegration: NSObject, ObservableObject, WKScriptMessageHandl
     private let views = NSHashTable<WKWebView>.weakObjects()
     private var tray: NSStatusItem?
     private var keyMonitor: Any?
+    private var trayMouseMonitor: Any?
     private var menuObserver: NSObjectProtocol?
     private var started = false
+    private var trayMenu: NSMenu?
 
     func text(_ zh: String, _ en: String) -> String { language == "zh" ? zh : en }
     func localized(_ key: String) -> String {
@@ -97,17 +99,27 @@ final class DesktopIntegration: NSObject, ObservableObject, WKScriptMessageHandl
     func start() {
         guard !started else { return }
         started = true
-        tray = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        tray = NSStatusBar.system.statusItem(withLength: 24)
         if let url = Bundle.main.url(forResource: "whale-icon", withExtension: "png"),
            let image = NSImage(contentsOf: url) {
-            image.size = NSSize(width: 18, height: 18)
+            image.size = NSSize(width: 22, height: 22)
             image.isTemplate = true
             tray?.button?.image = image
         } else {
             tray?.button?.image = NSImage(systemSymbolName: "terminal", accessibilityDescription: "DSH Desktop")
         }
         tray?.button?.toolTip = "DSH Desktop"
+        tray?.button?.target = self
+        tray?.button?.action = #selector(show)
+        tray?.button?.sendAction(on: [.leftMouseUp])
         rebuildTray()
+        trayMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: .rightMouseDown) { [weak self] event in
+            guard let self, let button = self.tray?.button, let window = button.window,
+                  event.window === window,
+                  button.bounds.contains(button.convert(event.locationInWindow, from: nil)) else { return event }
+            self.trayMenu?.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.height), in: button)
+            return nil
+        }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             let key = event.charactersIgnoringModifiers?.lowercased()
@@ -142,13 +154,22 @@ final class DesktopIntegration: NSObject, ObservableObject, WKScriptMessageHandl
             item.target = self
             menu.addItem(item)
         }
-        tray?.menu = menu
+        trayMenu = menu
     }
     @objc private func show() {
         NSApp.activate(ignoringOtherApps: true)
         NSApp.windows.first(where: { $0.title.hasPrefix("DSH Desktop") })?.makeKeyAndOrderFront(nil)
     }
-    @objc private func settings() { NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil); NSApp.activate(ignoringOtherApps: true) }
+    @objc private func settings() {
+        NSApp.activate(ignoringOtherApps: true)
+        DispatchQueue.main.async {
+            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            DispatchQueue.main.async {
+                NSApp.windows.first(where: { $0.identifier?.rawValue == "com_apple_SwiftUI_Settings_window" || $0.title == self.text("DSH Desktop 设置", "DSH Desktop Settings") })?.makeKeyAndOrderFront(nil)
+                NSApp.activate(ignoringOtherApps: true)
+            }
+        }
+    }
     @objc private func quit() { NSApp.terminate(nil) }
 }
 
