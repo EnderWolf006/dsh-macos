@@ -19,7 +19,7 @@ struct ReleaseNotes {
 enum UpdateNotesEngine {
     // 三条更新链路各自的 notes 来源仓库
     static let dshUpstream = "deepseek-ai/deepseek-harness"   // 后端 dsh（tag 带 dsh-v 前缀）
-    static let appRepo = "iiiiiei/dsh-macos"                 // 前端应用自身
+    static let appRepo = "EnderWolf006/dsh-macos"            // 前端应用自身
     static let launcherRepo = "iiiiiei/dsh-launcher"         // 菜单栏伴侣应用
 
     /// 聚合 (from, to] 区间的所有 release notes，按版本**降序**返回

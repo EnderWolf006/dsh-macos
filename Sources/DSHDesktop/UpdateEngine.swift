@@ -688,7 +688,7 @@ enum AppSelfUpdater {
     /// 稳定镜像（由 Actions 自动同步，存在分钟级延迟）。镜像仓库名保持小写。
     /// 双源意义：主源改动快但偶有回补/重发，镜像可交叉验证"用户实际会拿到什么"，
     /// 两源不一致时弹窗向用户交代差异，而不是静默挑一个装。
-    static let primaryRepo = "iiiiiei/dsh-macos"
+    static let primaryRepo = "EnderWolf006/dsh-macos"
     static let mirrorRepo = "Farverge/dsh-macos"
 
     struct Release {
@@ -699,7 +699,7 @@ enum AppSelfUpdater {
     }
 
     /// repo 带默认值 = 主源，既有调用点零改动；双源检查时由调用方传 mirrorRepo 取镜像源。
-    static func fetchLatestRelease(repo: String = "iiiiiei/dsh-macos") async -> Release? {
+    static func fetchLatestRelease(repo: String = primaryRepo) async -> Release? {
         guard let url = URL(string: "https://api.github.com/repos/\(repo)/releases/latest") else { return nil }
         var request = URLRequest(url: url)
         request.timeoutInterval = 8

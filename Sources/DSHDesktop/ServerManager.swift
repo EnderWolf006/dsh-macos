@@ -161,8 +161,17 @@ final class ServerManager: ObservableObject {
         process.arguments = ["-c", "exec \(full)"]
 
         var env = ProcessInfo.processInfo.environment
-        // 保证 `#!/usr/bin/env node` 能找到 node / dsh
-        let binDirs = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
+        // 从终端安装后首次 `open` 会继承 NVM/fnm/Volta 的 PATH，而从 Finder/Dock
+        // 重开只剩系统 PATH。缓存命令若是 ~/.nvm/.../bin/dsh，其 shebang
+        // `#!/usr/bin/env node` 因而会找不到同目录 node 并以 127 退出。把已解析
+        // 可执行文件的目录放到最前面，使首次启动与之后重开使用同一套运行时。
+        var binDirs = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
+        if let executable = resolved.split(separator: " ").first.map(String.init),
+           executable.hasPrefix("/") {
+            let resolvedBin = URL(fileURLWithPath: executable).deletingLastPathComponent().path
+            binDirs.removeAll { $0 == resolvedBin }
+            binDirs.insert(resolvedBin, at: 0)
+        }
         let existing = env["PATH"] ?? ""
         env["PATH"] = binDirs.joined(separator: ":") + ":" + existing
         if env["DSH_HOME"] == nil {
